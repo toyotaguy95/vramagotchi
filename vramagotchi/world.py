@@ -105,7 +105,7 @@ class World:
             pet.approx = bool(getattr(self.llm, "approx", False)) and g.kind == "gpu"
             pet.update(g, own.get(g.uuid, 0) if g.kind != "gpu" else tokens / len(eaters) if g.uuid in eaters else 0.0, now, dt)
             pet.px = draw(pet, self.frame_no, now)
-            look = (pet.mood, pet.egg, bool(pet.hatch_start), pet.wearing, round(pet.pct, 1))
+            look = (pet.mood, pet.egg, bool(pet.hatch_start), pet.wearing, round(pet.pct, 1), pet.stage)
             if pet.still is None or look != pet.still_look or self.frame_no % 20 == 0:
                 pet.still, pet.still_look = pet.px, look      # a steadier picture for very small windows
             pets.append(pet)

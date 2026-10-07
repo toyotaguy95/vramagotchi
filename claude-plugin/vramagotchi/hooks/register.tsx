@@ -80,6 +80,8 @@ const lovedUntil = atom({ plugin: 'vramagotchi', key: 'lovedUntil' } as const, 0
 const human = (n: number): string =>
   n >= 1e6 ? `${+(n / 1e6).toFixed(1)}M` : n >= 1e3 ? `${+(n / 1e3).toFixed(1)}k` : `${Math.round(n)}`
 
+const a = (word: string): string => `${/^[aeiou]/.test(word) ? 'an' : 'a'} ${word}`
+
 const pick = <T,>(list: readonly T[]): T | undefined => list[Math.floor(Math.random() * list.length)]
 
 const stageOf = (lifetime: number): number => STAGES.reduce((found, stage, i) => (lifetime >= stage.at ? i : found), 0)
@@ -349,7 +351,7 @@ const card = (pet: Save, now: number): string => {
   return [
     `${pet.name} the ${pet.isShiny ? 'shiny ' : ''}${STAGES[stage]?.name ?? ''}`,
     `ate ${human(pet.lifetime)} tokens · ${days} day${days === 1 ? '' : 's'} old · ${pet.streak}-day streak · petted ${pet.pets} times`,
-    next ? `grows into a ${next.name} at ${human(next.at)} tokens` : 'fully grown',
+    next ? `grows into ${a(next.name)} at ${human(next.at)} tokens` : 'fully grown',
     '',
     `Collection ${pet.items.length}/${ITEMS.length}`,
     ...list,
@@ -403,7 +405,7 @@ export const register: Register = on => {
         const grown = STAGES[stageOf(before.lifetime + out)]
 
         if (before.isHatched && grown && stageOf(before.lifetime + out) > stageOf(before.lifetime)) {
-          await cheer($, [`${before.name} grew into a ${grown.name}!`])
+          await cheer($, [`${before.name} grew into ${a(grown.name)}!`])
         }
       })
     }

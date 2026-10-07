@@ -43,6 +43,7 @@ def puppet(pet, mood):
     p.gpu, p.mood, p.rate = g, mood, 49.0 if mood == "eating" else 0.0
     p.particles, p.drops, p.line = [], [], ""
     p.petted_until = p.sparkle_until = p.hot_until = 0.0
+    p.shiny = False                # the stored pictures loop, so a drifting coat would jump
     p.last_fed = time.time()
     return p
 
@@ -77,7 +78,7 @@ def write_gif(pet, mood, path):
 
 def look_of(pet):
     """What the stored GIFs depend on. A new look means the slots are redrawn."""
-    return [pet.name, pet.color_index, pet.species, pet.wearing]
+    return [pet.name, pet.color_index, pet.species, pet.wearing, pet.stage]
 
 
 def ask(cooler, command, reply, tries=12):

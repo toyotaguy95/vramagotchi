@@ -32,8 +32,10 @@ LINES = {
     "petted": ["hehe", "again!", "I love you too"],
 }
 
-# Things a pet can wear. Starters are there from birth; the rest are earned by what the card actually does.
-STARTERS = ("bow", "flower", "glasses", "propeller")
+# A pet grows up as it eats: (stage, tokens eaten in its whole life, how big it is drawn).
+STAGES = (("baby", 0, 0.7), ("kid", 25e3, 0.85), ("teen", 250e3, 1.0), ("adult", 2.5e6, 1.0), ("legend", 25e6, 1.0))
+
+# Things a pet can wear. Some are earned by what the card actually does; the rest are found by luck while eating.
 EARNED = (
     ("headphones", "ate 10k tokens", lambda p: p.tokens_total >= 1e4),
     ("wizard", "ate 100k tokens", lambda p: p.tokens_total >= 1e5),
@@ -41,12 +43,20 @@ EARNED = (
     ("tophat", "ate ten million tokens", lambda p: p.tokens_total >= 1e7),
     ("shades", "survived 85°C", lambda p: p.max_temp >= 85),
     ("bandage", "ran out of memory and lived", lambda p: p.faints >= 1),
+    ("flame", "was fed seven days in a row", lambda p: p.streak >= 7),
+    ("bow", "got petted 25 times", lambda p: p.times_petted >= 25),
 )
+FOUND = (("flower", "common"), ("glasses", "common"), ("propeller", "rare"), ("halo", "rare"), ("star", "legendary"))
+FIND_ODDS_PER_1K = 0.02          # the chance of a find for every thousand tokens eaten
+SHINY_ODDS = 1 / 50              # the chance an egg holds a shiny pet
+OLD_STARTERS = ("bow", "flower", "glasses", "propeller")     # pets born before finds existed had these from birth
 ITEM_NAMES = {"bow": "bow", "flower": "flower", "glasses": "glasses", "propeller": "propeller cap", "headphones": "headphones",
-              "wizard": "wizard hat", "crown": "crown", "tophat": "top hat", "shades": "sunglasses", "bandage": "bandage"}
+              "wizard": "wizard hat", "crown": "crown", "tophat": "top hat", "shades": "sunglasses", "bandage": "bandage",
+              "flame": "streak flame", "halo": "halo", "star": "golden star"}
 ITEM_SLOT = {"bow": "deco", "flower": "deco", "bandage": "deco", "glasses": "face", "shades": "face",
-             "propeller": "head", "wizard": "head", "crown": "head", "tophat": "head", "headphones": "head"}
-ALL_ITEMS = STARTERS + tuple(item for item, _, _ in EARNED)
+             "propeller": "head", "wizard": "head", "crown": "head", "tophat": "head", "headphones": "head",
+             "flame": "head", "halo": "head", "star": "head"}
+ALL_ITEMS = tuple(item for item, _, _ in EARNED) + tuple(item for item, _ in FOUND)
 
 
 class Pet:
@@ -68,7 +78,11 @@ class Pet:
         self.last_fed = saved.get("last_fed", now)
         self.faints = saved.get("faints", 0)
         self.times_petted = saved.get("times_petted", 0)
-        known = ALL_ITEMS if unlock_all else STARTERS + tuple(saved.get("unlocked", ()))
+        self.streak = saved.get("streak", 0)
+        self.fed_day = saved.get("fed_day", "")
+        self.shiny = saved.get("shiny", bool(not saved and not unlock_all and random.random() < SHINY_ODDS))
+        self.crumbs = saved.get("crumbs", 0.0)       # tokens eaten since the last roll for a find
+        known = ALL_ITEMS if unlock_all else tuple(saved.get("unlocked", ())) + (OLD_STARTERS if saved and "streak" not in saved else ())
         self.unlocked = [item for item in ALL_ITEMS if item in known]
         self.wearing = saved.get("wearing") if saved.get("wearing") in self.unlocked else None
 
@@ -90,8 +104,36 @@ class Pet:
         return {"name": self.name, "color": self.color_index, "species": self.species_index, "born": self.born,
                 "tokens_total": round(self.tokens_total), "day": self.day, "tokens_today": round(self.tokens_today),
                 "max_temp": self.max_temp, "last_fed": self.last_fed, "faints": self.faints,
-                "times_petted": self.times_petted, "unlocked": [i for i in self.unlocked if i not in STARTERS],
-                "wearing": self.wearing}
+                "times_petted": self.times_petted, "unlocked": list(self.unlocked), "wearing": self.wearing,
+                "streak": self.streak, "fed_day": self.fed_day, "shiny": self.shiny, "crumbs": round(self.crumbs)}
+
+    @property
+    def stage(self):
+        return max(i for i, (_, at, _) in enumerate(STAGES) if self.tokens_total >= at)
+
+    @property
+    def stage_name(self):
+        return STAGES[self.stage][0]
+
+    def growth(self):
+        """What comes next, in words."""
+        if self.stage + 1 == len(STAGES):
+            return "fully grown"
+        name, at, _ = STAGES[self.stage + 1]
+        return f"{name} at {at / 1e6:g}M" if at >= 1e6 else f"{name} at {at / 1e3:g}k"
+
+    def _find(self, tokens):
+        """Rolls for a lucky find: one roll for every thousand tokens eaten. Rarer things come up less often."""
+        self.crumbs += tokens
+        while self.crumbs >= 1000:
+            self.crumbs -= 1000
+            if random.random() < FIND_ODDS_PER_1K:
+                roll = random.random()
+                rarity = "legendary" if roll < 0.03 else "rare" if roll < 0.25 else "common"
+                new = [item for item, kind in FOUND if kind == rarity and item not in self.unlocked]
+                if new:
+                    return random.choice(new), rarity
+        return None
 
     @property
     def pct(self):
@@ -153,16 +195,21 @@ class Pet:
                 self.egg = False
                 self.born = self.last_fed = self.last_active = now
                 self.sparkle_until = now + 4
-                self.say(f"hi! I'm {self.name}. I live in your {gpu.name}", 6, now)
+                self.say(f"hi! I'm {self.name}{', a rare shiny one' if self.shiny else ''}. I live in your {gpu.name}", 6, now)
             return
         fresh = gpu.stamp != self._stamp
         delta = gpu.mem_used - self.gpu.mem_used if fresh else 0.0
         self.gpu, self._stamp = gpu, gpu.stamp
         self.rate += (tokens / dt - self.rate) * min(1.0, dt / 1.5) if dt > 0 else 0.0
+        stage, found = self.stage, None
         if tokens:
             today = time.strftime("%Y-%m-%d")
             if today != self.day:
                 self.day, self.tokens_today = today, 0.0
+            if today != self.fed_day:
+                yesterday = time.strftime("%Y-%m-%d", time.localtime(now - 86400))
+                self.streak, self.fed_day = (self.streak + 1 if self.fed_day == yesterday else 1), today
+            found = self._find(tokens)
             self.tokens_total += tokens
             self.tokens_today += tokens
             self.last_fed = now
@@ -191,12 +238,19 @@ class Pet:
         change = gpu.mem_used - self._settled if fresh and abs(delta) < 150 and gpu.kind == "gpu" else 0.0
         if fresh and abs(delta) < 150:
             self._settled = gpu.mem_used
-        if earned:
-            self.unlocked = [item for item in ALL_ITEMS if item in self.unlocked or item == earned]
-            self.wearing = self.wearing or earned
+        if self.stage > stage:
+            self.sparkle_until = now + 6
+            self.say(f"I grew up! I'm {'an' if self.stage_name[0] in 'aeiou' else 'a'} {self.stage_name} now", 8, now)
+        elif earned or found:
+            new = earned or found[0]
+            self.unlocked = [item for item in ALL_ITEMS if item in self.unlocked or item == new]
+            self.wearing = self.wearing or new
             self.sparkle_until = now + 4
-            why = next(reason for item, reason, _ in EARNED if item == earned)
-            self.say(f"new {ITEM_NAMES[earned]}! I {why}", 7, now)
+            if earned:
+                why = next(reason for item, reason, _ in EARNED if item == earned)
+                self.say(f"new {ITEM_NAMES[earned]}! I {why}", 7, now)
+            else:
+                self.say(f"I found a {ITEM_NAMES[new]}! ({found[1]})", 7, now)
         elif change > 1024:
             self.say(f"*gulp* that was a {change / 1024:.1f} GB model", 6, now)
         elif change < -1024:

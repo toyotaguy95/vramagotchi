@@ -45,7 +45,7 @@ def payload(world):
             "line": p.line, "color": "#%02x%02x%02x" % p.color, "pct": round(p.pct * 100, 1),
             "used": round(g.mem_used / 1024, 1), "total": round(g.mem_total / 1024), "temp": round(g.temp),
             "power": round(g.power), "util": round(g.util), "rate": round(p.rate), "today": ("~" if p.approx else "") + human(p.tokens_today),
-            "ever": human(p.tokens_total), "wearing": p.wearing, "items": [[i, ITEM_NAMES[i]] for i in p.unlocked],
+            "ever": f"{human(p.tokens_total)} ever · {p.stage_name}, {p.growth()}", "wearing": p.wearing, "items": [[i, ITEM_NAMES[i]] for i in p.unlocked],
             "mem": f"context <b>{g.mem_used / 1000:.0f}k</b>/{g.mem_total / 1000:.0f}k tokens" if g.kind == "claude"
                    else f"VRAM <b>{g.mem_used / 1024:.1f}</b>/{g.mem_total / 1024:.0f} GB",
             "vit": ("writing" if g.util else "quiet") if g.kind == "claude" else "",
@@ -267,7 +267,7 @@ function show(state) {
     bar.style.background = level(p.pct, 70, 90);
     el.querySelector(".vram").innerHTML = p.mem;
     el.querySelector(".vitals").innerHTML = p.vit ? p.vit : p.temp ? `<b style="color:${level(p.temp, 70, 82)}">${p.temp}°C</b> · ${p.power} W · ${p.util}%` : `${p.util}% busy`;
-    el.querySelector(".ate").innerHTML = `ate <b>${p.today}</b> tokens today · ${p.ever} ever`;
+    el.querySelector(".ate").innerHTML = `ate <b>${p.today}</b> tokens today · ${p.ever}`;
     el.querySelector(".rate").innerHTML = p.rate > 1 ? `<b style="color:var(--warn)">${p.rate} tok/s</b>` : "";
     const key = p.items.map(i => i[0]).join() + "|" + p.wearing;
     if (key !== c.items) {

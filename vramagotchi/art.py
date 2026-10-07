@@ -1,9 +1,11 @@
 """Draws a pet as a small grid of colored pixels. Every display starts from this grid."""
 
+import colorsys
 import math
 import random
 import time
 
+from .pet import STAGES
 from .util import clamp, lerp, shade
 
 W, H = 36, 30                 # canvas in pixels
@@ -19,7 +21,7 @@ PAL = {
     "s": (170, 205, 255), "w": WHITE, "k": (42, 40, 56), "e": (156, 158, 176), "E": (94, 96, 114),
     "p": (255, 110, 156), "P": (214, 62, 112), "u": (146, 96, 226), "U": (98, 58, 172), "g": (126, 204, 96),
     "G": (62, 146, 76), "n": (240, 214, 170), "c": (130, 196, 250), "#": EYE, "W": WHITE, "o": GLINT,
-    "M": MOUTH, "T": TONGUE,
+    "M": MOUTH, "T": TONGUE, "O": (255, 140, 20),
 }
 
 EYES = {                      # 3 wide, 4 tall
@@ -52,6 +54,10 @@ HATS = {                      # even widths so they sit centred; bottom row over
     "icepack": ["...ww...", "..cccc..", ".ccwccc.", ".cccccc.", "..cccc.."],
     "propeller": [".eeeeeeeeee.", ".....kk.....", "...rryybb...", "..rrryybbb..", ".kkkkkkkkkk."],
     "propeller2": ["....eEEe....", ".....kk.....", "...rryybb...", "..rrryybbb..", ".kkkkkkkkkk."],
+    "halo": [".yyyyyyyy.", "yY......Yy", ".yyyyyyyy.", "..........", ".........."],        # floats above the head
+    "star": ["....yy....", "...yyyy...", "yyyyyyyyyy", ".yyyWWyyy.", "..yyyyyy..", ".yyy..yyy.", ".y......y.",
+             ".........."],
+    "flame": ["....r...", "...rr...", "..rOOr..", ".rOOOrr.", ".rOyyOr.", ".rOywOr.", "..rrrr.."],
 }
 BITS = {
     "bow": ["pp...pp", "ppp.ppp", "pppPppp", "ppp.ppp", "pp...pp"],
@@ -145,7 +151,10 @@ def draw(pet, frame, now=None):
         return region(test, min(ax, bx, qx), min(ay, by, qy), max(ax, bx, qx), max(ay, by, qy))
 
     # ── colours: the body warms toward red with the card, and goes pale when it faints ──
-    base = lerp(pet.color, (240, 70, 60), clamp((g.temp - 62) / 28) * 0.75)
+    coat = pet.color
+    if pet.shiny:                    # a shiny pet's coat drifts slowly through every colour
+        coat = tuple(rnd(v * 255) for v in colorsys.hsv_to_rgb(now * 0.04 % 1, 0.5, 1.0))
+    base = lerp(coat, (240, 70, 60), clamp((g.temp - 62) / 28) * 0.75)
     if mood == "fainted":
         base = lerp(base, (168, 168, 182), 0.65)
     dark, light = shade(base, 0.82), lerp(base, WHITE, 0.55)
@@ -168,6 +177,8 @@ def draw(pet, frame, now=None):
         ry = 8.0 + (0.6 if beat else 0)
     else:
         ry = 8.0 + (0.5 if breath > 0.3 else 0)
+    grown = STAGES[pet.stage][2]     # a young pet is drawn smaller
+    rx, ry = rx * grown, ry * grown
     cy = GROUND + 0.5 - ry
     top = cy - ry
     head = math.ceil(top)            # first row of the body
@@ -192,6 +203,17 @@ def draw(pet, frame, now=None):
             ex, tall = cx + side * (rx * 0.42 + 0.4), 2.6 if asleep else 4.8
             parts.append(oval(ex, top + 1.0 - tall, 1.9, tall + 0.6))
             inner.append((oval(ex, top + 0.8 - tall, 0.75, tall - 0.9), pink))
+    if pet.stage >= 3:               # grown-ups get horns and little wings; a legend's are gold
+        trim = PAL["y"] if pet.stage >= 4 else cream
+        for side in (-1, 1):
+            hx = cx + side * rx * 0.24
+            parts.append(tri(hx - 1.7, top + 1.6, hx + 1.7, top + 1.6, hx + side * 1.3, top - 3.6))
+            inner.append((tri(hx - 1.7, top + 1.6, hx + 1.7, top + 1.6, hx + side * 1.3, top - 3.6), trim))
+            if not asleep:
+                wx, flap = cx + side * (rx + 0.4), (1 if beat and mood in ("eating", "working") else 0)
+                wing = tri(wx - side, cy - 1, wx + side * 5.5, cy - 7 - flap, wx + side * 4.5, cy + 2)
+                parts.append(wing)
+                inner.append(([p for p in wing if not in_body(*p)], PAL["y"] if pet.stage >= 4 else shade(base, 0.66)))
     if mood != "fainted":
         if sp == "cat":
             sway = 0 if asleep else math.sin(frame / FPS * math.pi) * 0.8
@@ -400,8 +422,11 @@ def draw(pet, frame, now=None):
         rise = (now - (pet.petted_until - 2.5)) * 3
         stamp(BITS["heart"], rnd(cx - 7), rnd(head - 4 - rise))
         stamp(BITS["heart"], rnd(cx + 4), rnd(head - 2 - rise))
+    spots = ((2, 6), (31, 4), (4, 20), (30, 18), (9, 1), (25, 0))
     if now < pet.sparkle_until:
-        for i, (x, y) in enumerate(((2, 6), (31, 4), (4, 20), (30, 18), (9, 1), (25, 0))):
+        for i, (x, y) in enumerate(spots):
             if (frame // 3 + i) % 3 == 0:
                 stamp(BITS["star"], x, y)
+    elif (pet.shiny or pet.stage >= 4) and mood != "fainted" and frame % 12 < 4:     # a glint now and then
+        stamp(BITS["star"], *spots[frame // 12 % len(spots)])
     return px

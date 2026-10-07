@@ -57,12 +57,17 @@ your computer; nothing is sent anywhere. `--no-claude` turns the offer off.
 
 `f` feed (your own model writes the pet's reply) · `p` pet · `a` dress up · `n` hatch a pet for another GPU · `tab` next pet · `q` quit
 
-## Accessories
+## Growing up
 
-Every pet starts with a bow, a flower, glasses and a propeller cap. The rest are earned by what the
-card actually does:
+A pet grows as it eats. It starts as a baby and becomes a kid at 25k tokens, a teen at 250k, an adult
+with horns and wings at 2.5M, and a golden legend at 25M. One egg in fifty hatches a shiny pet, whose
+coat drifts through every colour.
 
-| Accessory | Earned by |
+## Things to collect
+
+A new pet owns nothing. Some things are earned by what the card actually does:
+
+| Item | Earned by |
 |---|---|
 | headphones | eating 10k tokens |
 | wizard hat | eating 100k tokens |
@@ -70,6 +75,11 @@ card actually does:
 | top hat | eating ten million tokens |
 | sunglasses | surviving 85°C |
 | bandage | running out of memory and living |
+| streak flame | being fed seven days in a row |
+| bow | being petted 25 times |
+
+The rest are found by luck while it eats: a flower, glasses, a propeller cap, a halo, and one
+legendary golden star.
 
 ## Other ways to watch them
 

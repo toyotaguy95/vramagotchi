@@ -134,18 +134,18 @@ def block(pet, k, width, rows, chosen):
     if pet.rate > 1:
         vitals += f"  {fg((255, 214, 10))}{'~' if pet.approx else ''}{pet.rate:.0f} tok/s{RESET}"
     mark = f"{fg((255, 214, 10))}▸{RESET} " if chosen else ""
-    name = f"{mark}{BOLD}{pet.name}{RESET} · {g.name} · {age(now - pet.born)}"
+    name = f"{mark}{BOLD}{'✦ ' if pet.shiny else ''}{pet.name}{RESET} · {pet.stage_name} · {g.name} · {age(now - pet.born)}"
     if pet.egg:
         name = f"{mark}{BOLD}???{RESET} · {g.name}"
     if vlen(name) > width:
-        name = f"{mark}{BOLD}{'???' if pet.egg else pet.name}{RESET}"
+        name = f"{mark}{BOLD}{'???' if pet.egg else pet.name}{RESET}" + ("" if pet.egg else f" · {pet.stage_name}")
     info = [                                           # most important first
         name,
         pet.label(),
         f"CTX  {bar} {g.mem_used / 1000:.0f}k/{g.mem_total / 1000:.0f}k" if g.kind == "claude" else
         f"{'VRAM' if g.temp else 'MEM '} {bar} {g.mem_used / 1024:.1f}/{g.mem_total / 1024:.0f}G",
         vitals,
-        f"{DIM}ate {'~' if pet.approx else ''}{human(pet.tokens_today)} tokens today · {human(pet.tokens_total)} ever{RESET}",
+        f"{DIM}ate {'~' if pet.approx else ''}{human(pet.tokens_today)} tokens today · {human(pet.tokens_total)} ever · {pet.growth()}{RESET}",
     ]
     # The number of lines depends only on the window size, never on what the pet is doing,
     # so nothing shifts when a speech bubble or a longer status comes and goes.
