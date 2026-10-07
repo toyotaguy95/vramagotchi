@@ -67,8 +67,9 @@ card actually does:
 
 ## Other ways to watch them
 
-**In a browser:** `python3 -m vramagotchi --web` serves a page at `http://127.0.0.1:8377`. It listens on
-this machine only unless you pass `--host`. Useful address options:
+**In a browser:** `python3 -m vramagotchi --web` opens the pets as a web page on your own computer, at
+`http://127.0.0.1:8377`. Nothing leaves your computer and nobody else can see it, unless you choose to
+share it with `--host`. Useful address options:
 
 - `?pet=0` shows one pet
 - `?layout=round` fits a round cooler screen, with VRAM as a ring around the edge
