@@ -47,11 +47,21 @@ The core, the terminal view and the web page use only the Python standard librar
 Token counts come from a llama.cpp server's `/slots` endpoint (looked for on ports 8080 and 8000, or
 pass `--llm URL`). Without one the pets still react to load, memory and heat.
 
-## A pet for Claude Code
+## A pet inside Claude Code
 
-If you use Claude Code on the same computer, press `n` to hatch a pet for it. It eats the tokens Claude
-writes, and its belly is how full the context window is. It reads the records Claude Code already keeps on
-your computer; nothing is sent anywhere. `--no-claude` turns the offer off.
+No GPU needed. This one lives above your prompt in Claude Code and eats the tokens Claude writes. Inside
+Claude Code, type:
+
+```
+/plugin install vramagotchi --marketplace toyotaguy95/vramagotchi
+```
+
+Answer `y`, then press Enter. You get an egg, and your next prompt hatches it. It grows up and collects
+things the same way the GPU pets do, gets stuffed as the context window fills, and remembers everything
+between sessions. `/pet` shows its age, growth and collection. Nothing is sent anywhere.
+
+The GPU program can show a Claude Code pet too: press `n` to hatch one. It reads the records Claude Code
+already keeps on your computer. `--no-claude` turns the offer off.
 
 ## Keys
 

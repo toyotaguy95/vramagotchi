@@ -1,0 +1,12 @@
+{
+  "name": "vramagotchi",
+  "description": "VRAMagotchi: a pet for Claude Code that eats tokens",
+  "owner": { "name": "toyotaguy95" },
+  "plugins": [
+    {
+      "name": "vramagotchi",
+      "source": "./claude-plugin/vramagotchi",
+      "description": "A pet that lives above your prompt and eats the tokens Claude writes"
+    }
+  ]
+}
