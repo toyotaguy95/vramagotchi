@@ -1,0 +1,7 @@
+{
+  "name": "vramagotchi",
+  "version": "0.1.0",
+  "author": { "name": "toyotaguy95" },
+  "description": "A pet above your prompt that eats the tokens Claude writes and gets fat as the context window fills.",
+  "types": "./types/index.d.ts"
+}
