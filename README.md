@@ -47,6 +47,12 @@ The core, the terminal view and the web page use only the Python standard librar
 Token counts come from a llama.cpp server's `/slots` endpoint (looked for on ports 8080 and 8000, or
 pass `--llm URL`). Without one the pets still react to load, memory and heat.
 
+## A pet for Claude Code
+
+If you use Claude Code on the same computer, press `n` to hatch a pet for it. It eats the tokens Claude
+writes, and its belly is how full the context window is. It reads the records Claude Code already keeps on
+your computer; nothing is sent anywhere. `--no-claude` turns the offer off.
+
 ## Keys
 
 `f` feed (your own model writes the pet's reply) · `p` pet · `a` dress up · `n` hatch a pet for another GPU · `tab` next pet · `q` quit
