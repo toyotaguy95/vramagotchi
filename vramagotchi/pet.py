@@ -71,6 +71,7 @@ class Pet:
         self.petted_until = self.sparkle_until = self.hot_until = 0.0
         self.particles, self.drops = [], []
         self.px = None
+        self.still, self.still_look = None, None     # a picture refreshed only now and then, for tiny windows
         self._stamp = gpu.stamp
         self._settled = gpu.mem_used     # last memory level we commented on
 

@@ -93,6 +93,9 @@ class World:
             pet.approx = bool(getattr(self.llm, "approx", False))
             pet.update(g, tokens / len(eaters) if g.uuid in eaters else 0.0, now, dt)
             pet.px = draw(pet, self.frame_no, now)
+            look = (pet.mood, pet.egg, bool(pet.hatch_start), pet.wearing, round(pet.pct, 1))
+            if pet.still is None or look != pet.still_look or self.frame_no % 20 == 0:
+                pet.still, pet.still_look = pet.px, look      # a steadier picture for very small windows
             pets.append(pet)
         self.frame_no += 1
         self.selected = min(self.selected, max(0, len(pets) - 1))

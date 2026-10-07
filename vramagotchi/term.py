@@ -104,7 +104,7 @@ def art_rows(k):
 
 
 def sprite(pet, k):
-    grid = scaled(pet.px, k)
+    grid = scaled(pet.still if k < 1 and pet.still else pet.px, k)
     if len(grid) % 2:
         grid.append([None] * len(grid[0]))
     out = []
@@ -144,13 +144,14 @@ def block(pet, k, width, rows, chosen):
         vitals,
         f"{DIM}ate {'~' if pet.approx else ''}{human(pet.tokens_today)} tokens today · {human(pet.tokens_total)} ever{RESET}",
     ]
-    info = [text for text in info if vlen(text) <= width or text is name]
+    # The number of lines depends only on the window size, never on what the pet is doing,
+    # so nothing shifts when a speech bubble or a longer status comes and goes.
     want_info = max(1, min(len(info), rows - art_rows(k)))
     spare = rows - want_info - art_rows(k)
     say = 4 if spare >= 4 else 3 if spare >= 3 else 0
     lines = bubble(pet.line, width, say) if say and width >= 20 else []
     lines += [center(row, width) for row in sprite(pet, k)]
-    lines += [center(text, width) for text in info[:want_info]]
+    lines += [center(clip(text, width), width) for text in info[:want_info]]
     return [clip(line, width) for line in lines]
 
 
