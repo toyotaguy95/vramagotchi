@@ -39,6 +39,7 @@ class World:
         self.frame_no, self.selected, self.note = 0, 0, ""
         self.adopted = set(self.saved)   # cards that have a pet; a first run starts with one
         self.waiting = []                # cards without a pet yet
+        self.treats = {}                 # tokens a pet was hand-fed and has not eaten yet
 
     # ── sampling (background thread) ──
     def sample_once(self, with_gpus=True):
@@ -103,7 +104,10 @@ class World:
         for g in gpus:
             pet = self.pets[g.uuid]
             pet.approx = bool(getattr(self.llm, "approx", False)) and g.kind == "gpu"
-            pet.update(g, own.get(g.uuid, 0) if g.kind != "gpu" else tokens / len(eaters) if g.uuid in eaters else 0.0, now, dt)
+            treat = min(2, self.treats.get(g.uuid, 0))           # a treat is eaten a bite at a time
+            if treat:
+                self.treats[g.uuid] -= treat
+            pet.update(g, treat + (own.get(g.uuid, 0) if g.kind != "gpu" else tokens / len(eaters) if g.uuid in eaters else 0.0), now, dt)
             pet.px = draw(pet, self.frame_no, now)
             look = (pet.mood, pet.egg, bool(pet.hatch_start), pet.wearing, round(pet.pct, 1), pet.stage)
             if pet.still is None or look != pet.still_look or self.frame_no % 20 == 0:
@@ -143,15 +147,15 @@ class World:
             return self.pets[uuid]
         return self.view[self.selected] if self.view else None
 
-    def feed(self):
-        pets = [p for p in self.view if p.gpu.hosts_llm and p.gpu.kind == "gpu"] or [p for p in self.view if p.gpu.kind == "gpu"]
-        if not pets:
+    def feed(self, uuid=None):
+        """Feed the chosen pet: the model writes its reply, and the pet eats those tokens as a treat."""
+        pet, now = self.pick(uuid), time.time()
+        if not pet or pet.egg:
             return
-        pet, now = pets[0], time.time()
         if not hasattr(self.llm, "say"):
             pet.say("no model server found. I only eat real tokens", 5, now)
             return
-        pet.say("...", 90, now)
+        pet.say("...", 90, now, hold=True)
         g = pet.gpu
 
         def ask():
@@ -163,7 +167,9 @@ class World:
                     f"{human(pet.tokens_today)} tokens eaten today, mood: {pet.label()}. You were just fed. Say something.")
             except Exception:
                 text = ""
-            pet.say(text or "nom.", 12, time.time())
+            pet.say(text or "nom.", 12, time.time(), hold=True)
+            if not (g.hosts_llm and g.kind == "gpu"):      # the card running the model already counted these; any other pet gets them as a treat
+                self.treats[g.uuid] = self.treats.get(g.uuid, 0) + max(8, len(text) // 4)
 
         threading.Thread(target=ask, daemon=True).start()
 

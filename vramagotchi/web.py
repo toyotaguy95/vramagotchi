@@ -115,7 +115,7 @@ class Handler(BaseHTTPRequestHandler):
             return self._send(400, "bad request", "text/plain")
         action, uuid = ask.get("action"), ask.get("id")
         if action == "feed":
-            self.world.feed()
+            self.world.feed(uuid)
         elif action == "pet":
             self.world.stroke(uuid)
         elif action == "hatch":

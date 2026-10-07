@@ -92,7 +92,7 @@ class Pet:
         self.approx = False                          # true when token numbers are estimates
         self.last_active = now
         self.mood = "idle"
-        self.line, self.line_until, self.quiet_until = "", 0.0, now + 2
+        self.line, self.line_until, self.quiet_until, self.hold_until = "", 0.0, now + 2, 0.0
         self.petted_until = self.sparkle_until = self.hot_until = 0.0
         self.particles, self.drops = [], []
         self.px = None
@@ -169,8 +169,10 @@ class Pet:
         self.wearing = options[(options.index(self.wearing) + 1) % len(options)]
         return self.wearing
 
-    def say(self, text, seconds, now):
+    def say(self, text, seconds, now, hold=False):
+        """Show a line. A held line stays up until its time is over, whatever the pet's mood does meanwhile."""
         self.line, self.line_until = text, now + seconds
+        self.hold_until = self.line_until if hold else 0.0
         self.quiet_until = self.line_until + random.uniform(4, 9)
 
     def _pick(self, now):
@@ -255,6 +257,8 @@ class Pet:
             self.say(f"*gulp* that was a {change / 1024:.1f} GB model", 6, now)
         elif change < -1024:
             self.say(f"ahh. {-change / 1024:.1f} GB lighter", 6, now)
+        elif now < self.hold_until:
+            pass
         elif mood != self.mood:
             self.mood = mood
             self.say(self._pick(now), 5, now)
