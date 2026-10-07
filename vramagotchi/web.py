@@ -44,7 +44,7 @@ def payload(world):
             "id": g.uuid, "name": p.name, "gpu": g.name, "age": age(now - p.born), "mood": p.mood, "label": p.label(),
             "line": p.line, "color": "#%02x%02x%02x" % p.color, "pct": round(p.pct * 100, 1),
             "used": round(g.mem_used / 1024, 1), "total": round(g.mem_total / 1024), "temp": round(g.temp),
-            "power": round(g.power), "util": round(g.util), "rate": round(p.rate), "today": human(p.tokens_today),
+            "power": round(g.power), "util": round(g.util), "rate": round(p.rate), "today": ("~" if p.approx else "") + human(p.tokens_today),
             "ever": human(p.tokens_total), "wearing": p.wearing, "items": [[i, ITEM_NAMES[i]] for i in p.unlocked],
             "pal": palette, "px": pixels,
         })

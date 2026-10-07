@@ -9,7 +9,7 @@ from pathlib import Path
 
 from .art import FPS, draw
 from .pet import ITEM_NAMES, LINES, Pet
-from .sources import Demo, LlamaCpp, find_llm
+from .sources import Demo, find_llm
 from .util import human
 
 
@@ -45,7 +45,7 @@ class World:
             with self.lock:
                 self.gpus = gpus
         try:
-            _, new = (self.llm or self.source).poll_tokens()
+            _, new = (self.llm or self.source).poll_tokens(self.gpus)
         except Exception:
             new = 0
         with self.lock:
@@ -90,6 +90,7 @@ class World:
         pets = []
         for g in gpus:
             pet = self.pets[g.uuid]
+            pet.approx = bool(getattr(self.llm, "approx", False))
             pet.update(g, tokens / len(eaters) if g.uuid in eaters else 0.0, now, dt)
             pet.px = draw(pet, self.frame_no, now)
             pets.append(pet)
@@ -132,7 +133,7 @@ class World:
         if not pets:
             return
         pet, now = pets[0], time.time()
-        if not isinstance(self.llm, LlamaCpp):
+        if not hasattr(self.llm, "say"):
             pet.say("no model server found. I only eat real tokens", 5, now)
             return
         pet.say("...", 90, now)

@@ -54,7 +54,7 @@ class NvidiaSmi:
             gpus.append(Gpu(int(p[0]), p[1], name, num(p[3]), num(p[4]), num(p[5]) or 1.0, num(p[6]), num(p[7]), p[1] in llm_cards, now))
         return gpus
 
-    def poll_tokens(self):
+    def poll_tokens(self, gpus=()):
         return False, 0
 
 
@@ -90,7 +90,7 @@ class AppleSilicon:
         return [Gpu(0, "apple-gpu", self.name, self.parse_util(self._run("ioreg", "-r", "-d", "1", "-w", "0", "-c", "IOAccelerator")),
                     self.parse_memory(self._run("vm_stat")), self.total, 0.0, 0.0, bool(busy), time.time())]
 
-    def poll_tokens(self):
+    def poll_tokens(self, gpus=()):
         return False, 0
 
 
@@ -136,7 +136,7 @@ class Demo:
             small.temp = r(t, 26, 34, 70, 40)
         return [big, small]
 
-    def poll_tokens(self):
+    def poll_tokens(self, gpus=()):
         now = self.clock()
         dt, self.last = max(0.0, now - self.last), now
         rate = self._rate(now % self.LOOP)
@@ -165,7 +165,7 @@ class LlamaCpp:
         except Exception:
             return False
 
-    def poll_tokens(self):
+    def poll_tokens(self, gpus=()):
         busy, new, seen = False, 0, {}
         for slot in self._get("/slots"):
             key = (slot.get("id"), slot.get("id_task"))
@@ -192,9 +192,66 @@ class LlamaCpp:
         return text[:90]
 
 
+class Ollama:
+    """Ollama does not publish a running token count, so this estimates one: it measures the loaded model's
+    real speed with one tiny request, then counts at that speed while a model is loaded and the GPU is busy.
+    Numbers from here are estimates and are shown with a "~"."""
+
+    approx = True
+
+    def __init__(self, base="http://127.0.0.1:11434"):
+        self.base = base.rstrip("/")
+        self.speed = {}            # model name -> measured tokens per second
+        self.model = None
+        self.last = time.time()
+
+    def _call(self, path, body=None, timeout=3):
+        data = json.dumps(body).encode() if body is not None else None
+        req = urllib.request.Request(self.base + path, data=data, headers={"Content-Type": "application/json"})
+        with urllib.request.urlopen(req, timeout=timeout) as r:
+            return json.load(r)
+
+    def alive(self):
+        try:
+            return isinstance(self._call("/api/ps").get("models"), list)
+        except Exception:
+            return False
+
+    def _generate(self, prompt, system=None, tokens=24):
+        body = {"model": self.model, "prompt": prompt, "stream": False, "options": {"num_predict": tokens}}
+        if system:
+            body["system"] = system
+        reply = self._call("/api/generate", body, timeout=120)
+        if reply.get("eval_count") and reply.get("eval_duration"):
+            self.speed[self.model] = reply["eval_count"] / (reply["eval_duration"] / 1e9)
+        return (reply.get("response") or "").strip(), reply.get("eval_count") or 0
+
+    def poll_tokens(self, gpus=()):
+        now = time.time()
+        dt, self.last = min(2.0, now - self.last), now
+        loaded = self._call("/api/ps").get("models") or []
+        if not loaded:
+            self.model = None
+            return False, 0
+        self.model = loaded[0].get("name") or loaded[0].get("model")
+        if self.model not in self.speed:
+            self.speed[self.model] = 0.0           # so a failed measurement is not retried every half second
+            self._generate("hi")
+            self.last = time.time()
+            return True, 0
+        busy = max((g.util for g in gpus), default=0.0) >= 40
+        return busy, self.speed[self.model] * dt if busy else 0
+
+    def say(self, system, user):
+        if not self.model:
+            return ""
+        text, _ = self._generate(user, system, tokens=60)
+        text = text.splitlines()[0].strip().strip('"') if text else ""
+        return text[:90]
+
+
 def find_llm(urls):
-    for url in urls:
-        probe = LlamaCpp(url)
+    for probe in [LlamaCpp(url) for url in urls] + [Ollama()]:
         if probe.alive():
             return probe
     return None

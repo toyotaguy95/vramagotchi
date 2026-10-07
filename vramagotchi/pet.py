@@ -64,6 +64,7 @@ class Pet:
         self.egg = not saved and not unlock_all      # a brand-new pet starts as an egg
         self.hatch_start = None                      # set when someone hatches it
         self.rate = 0.0
+        self.approx = False                          # true when token numbers are estimates
         self.last_active = now
         self.mood = "idle"
         self.line, self.line_until, self.quiet_until = "", 0.0, now + 2

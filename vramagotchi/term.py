@@ -119,7 +119,7 @@ def block(pet, scale, width, rows, chosen):
     bar = fg(level(pet.pct * 100, 70, 90)) + "█" * filled + RESET + DIM + "░" * (12 - filled) + RESET
     vitals = f"{fg(level(g.temp, 70, 82))}{g.temp:.0f}°C{RESET}  {g.power:.0f}W  {g.util:.0f}%" if g.temp else f"{g.util:.0f}% busy"
     if pet.rate > 1:
-        vitals += f"  {fg((255, 214, 10))}{pet.rate:.0f} tok/s{RESET}"
+        vitals += f"  {fg((255, 214, 10))}{'~' if pet.approx else ''}{pet.rate:.0f} tok/s{RESET}"
     mark = f"{fg((255, 214, 10))}▸{RESET} " if chosen else ""
     name = f"{mark}{BOLD}{pet.name}{RESET} · {g.name} · {age(now - pet.born)}"
     if pet.egg:
@@ -131,7 +131,7 @@ def block(pet, scale, width, rows, chosen):
         pet.label(),
         f"{'VRAM' if g.temp else 'MEM '} {bar} {g.mem_used / 1024:.1f}/{g.mem_total / 1024:.0f}G",
         vitals,
-        f"{DIM}ate {human(pet.tokens_today)} tokens today · {human(pet.tokens_total)} ever{RESET}",
+        f"{DIM}ate {'~' if pet.approx else ''}{human(pet.tokens_today)} tokens today · {human(pet.tokens_total)} ever{RESET}",
     ]
     tall = H // 2 if scale == 1 else H                # sprite rows at full height
     used = [y for y in range(H) if any(pet.px[y])]
