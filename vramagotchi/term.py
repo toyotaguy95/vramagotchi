@@ -189,13 +189,19 @@ def interactive(world):
     fd = sys.stdin.fileno()
     old = termios.tcgetattr(fd)
     signal.signal(signal.SIGTERM, lambda *_: sys.exit(0))
+    if hasattr(signal, "SIGWINCH"):
+        signal.signal(signal.SIGWINCH, lambda *_: None)    # wakes the loop so a resize redraws at once
     world.start()
     try:
         tty.setcbreak(fd)
-        sys.stdout.write("\x1b[?1049h\x1b[?25l")
+        sys.stdout.write("\x1b[?1049h\x1b[?25l\x1b[?7l")     # own screen, no cursor, no line wrapping
+        last_size = None
         while True:
             started = time.time()
             size = shutil.get_terminal_size((80, 24))
+            if size != last_size:                          # window resized: wipe leftovers before redrawing
+                sys.stdout.write("\x1b[0m\x1b[2J")
+                last_size = size
             sys.stdout.write(render(world, world.frame(), size.columns, size.lines))
             sys.stdout.flush()
             wait = max(0.0, 1 / FPS - (time.time() - started))
@@ -220,6 +226,6 @@ def interactive(world):
     finally:
         world.stop.set()
         termios.tcsetattr(fd, termios.TCSADRAIN, old)
-        sys.stdout.write("\x1b[?25h\x1b[?1049l")
+        sys.stdout.write("\x1b[?7h\x1b[?25h\x1b[?1049l")
         sys.stdout.flush()
         world.save()
