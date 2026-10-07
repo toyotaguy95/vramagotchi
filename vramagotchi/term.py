@@ -122,6 +122,8 @@ def block(pet, scale, width, rows, chosen):
         vitals += f"  {fg((255, 214, 10))}{pet.rate:.0f} tok/s{RESET}"
     mark = f"{fg((255, 214, 10))}▸{RESET} " if chosen else ""
     name = f"{mark}{BOLD}{pet.name}{RESET} · {g.name} · {age(now - pet.born)}"
+    if pet.egg:
+        name = f"{mark}{BOLD}???{RESET} · {g.name}"
     if vlen(name) > width:
         name = f"{mark}{BOLD}{pet.name}{RESET}"
     info = [                                           # most important first
@@ -172,6 +174,8 @@ def render(world, pets, cols, rows):
         keys = "[f] feed  [p] pet  [a] dress up  " + ("[tab] next pet  " if len(pets) > 1 else "") + "[q] quit"
         if world.waiting:
             keys = "[n] hatch a pet for another GPU  " + keys
+        if any(p.egg and not p.hatch_start for p in pets):
+            keys = "[h] hatch your egg   [q] quit"
         if fit < len(pets):
             keys = f"[tab] next pet ({world.selected + 1}/{len(pets)})  [f] feed  [p] pet  [a] dress up  [q] quit"
         if vlen(keys) > cols:
@@ -201,6 +205,8 @@ def interactive(world):
                     break
                 if "\t" in key and world.view:
                     world.selected = (world.selected + 1) % len(world.view)
+                if "h" in key:
+                    world.crack()
                 if "n" in key:
                     world.hatch()
                 if "f" in key:

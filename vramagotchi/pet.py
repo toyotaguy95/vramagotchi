@@ -61,6 +61,8 @@ class Pet:
         self.unlocked = [item for item in ALL_ITEMS if item in known]
         self.wearing = saved.get("wearing") if saved.get("wearing") in self.unlocked else None
 
+        self.egg = not saved and not unlock_all      # a brand-new pet starts as an egg
+        self.hatch_start = None                      # set when someone hatches it
         self.rate = 0.0
         self.last_active = now
         self.mood = "idle"
@@ -131,6 +133,14 @@ class Pet:
                                                 rate=self.rate, hungry=hungry)
 
     def update(self, gpu, tokens, now, dt):
+        if self.egg:
+            self.gpu, self._stamp, self._settled, self.line = gpu, gpu.stamp, gpu.mem_used, ""
+            if self.hatch_start and now - self.hatch_start > 2.4:
+                self.egg = False
+                self.born = self.last_fed = self.last_active = now
+                self.sparkle_until = now + 4
+                self.say(f"hi! I'm {self.name}. I live in your {gpu.name}", 6, now)
+            return
         fresh = gpu.stamp != self._stamp
         delta = gpu.mem_used - self.gpu.mem_used if fresh else 0.0
         self.gpu, self._stamp = gpu, gpu.stamp
@@ -187,6 +197,8 @@ class Pet:
             self.line = ""
 
     def label(self):
+        if self.egg:
+            return "hatching!" if self.hatch_start else "an egg"
         extra = []
         if self.sweating and self.mood not in ("overheating", "fainted"):
             extra.append("sweating")

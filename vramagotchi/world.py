@@ -82,6 +82,8 @@ class World:
             if g.uuid not in self.pets:
                 self.pets[g.uuid] = Pet(g, self.saved.get(g.uuid, {}), len(self.pets),
                                         sleep_after=3.0 if self.demo else 20.0, unlock_all=self.demo)
+                if getattr(self, "hatched", None) == g.uuid:
+                    self.pets[g.uuid].hatch_start, self.hatched = now, None
                 if self.demo:
                     self.pets[g.uuid].wearing = ("propeller", "bow", "glasses", "flower")[len(self.pets) % 4 - 1]
         eaters = [g.uuid for g in gpus if g.hosts_llm] or ([max(gpus, key=lambda g: g.util).uuid] if gpus and tokens else [])
@@ -89,10 +91,6 @@ class World:
         for g in gpus:
             pet = self.pets[g.uuid]
             pet.update(g, tokens / len(eaters) if g.uuid in eaters else 0.0, now, dt)
-            if getattr(self, "hatched", None) == g.uuid:
-                self.hatched = None
-                pet.sparkle_until = now + 4
-                pet.say(f"hi! I'm {pet.name}. I live in your {g.name}", 6, now)
             pet.px = draw(pet, self.frame_no, now)
             pets.append(pet)
         self.frame_no += 1
@@ -120,7 +118,7 @@ class World:
         path = state_path()
         path.parent.mkdir(parents=True, exist_ok=True)
         tmp = path.with_suffix(".tmp")
-        tmp.write_text(json.dumps({uuid: pet.save() for uuid, pet in self.pets.items()}, indent=1))
+        tmp.write_text(json.dumps({uuid: pet.save() for uuid, pet in self.pets.items() if not pet.egg}, indent=1))
         tmp.replace(path)
 
     # ── things people do to pets ──
@@ -153,8 +151,17 @@ class World:
 
         threading.Thread(target=ask, daemon=True).start()
 
+    def crack(self):
+        """Hatch the first egg that is still waiting."""
+        egg = next((p for p in self.view if p.egg and not p.hatch_start), None)
+        if egg:
+            egg.hatch_start = time.time()
+        return egg is not None
+
     def hatch(self):
-        """Give the next card that has no pet one of its own."""
+        """Hatch a waiting egg, or give the next card that has no pet one of its own."""
+        if self.crack():
+            return
         if self.waiting:
             self.adopted.add(self.waiting[0].uuid)
             self.hatched = self.waiting[0].uuid

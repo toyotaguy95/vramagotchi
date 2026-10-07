@@ -28,7 +28,7 @@ git clone https://github.com/toyotaguy95/vramagotchi && cd vramagotchi
 python3 -m vramagotchi --demo
 ```
 
-There is nothing to configure. The first run gives you one pet, on the card running your model. If you
+There is nothing to configure. The first run gives you one egg, on the card running your model. Press `h` to hatch it. If you
 have more cards, press `n` to hatch a pet for each. The view scales with your terminal window.
 
 The core, the terminal view and the web page use only the Python standard library.

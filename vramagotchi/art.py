@@ -72,9 +72,45 @@ def rnd(v):
     return int(math.floor(v + 0.5))
 
 
+def draw_egg(pet, frame, now):
+    """An egg in the pet's colours: it wobbles while it waits, then cracks open."""
+    px = [[None] * W for _ in range(H)]
+    shell, spot, rim = (250, 244, 226), pet.color, (112, 96, 120)
+    since = now - pet.hatch_start if pet.hatch_start else None
+    wobble = math.sin(frame * 1.9) * 1.6 if since is not None else (math.sin(frame * 0.9) * 1.2 if frame % 30 < 8 else 0)
+    cx, cy, rx, ry = (W - 1) / 2 + wobble, GROUND - 7.5, 7.0, 9.0
+
+    def inside(x, y):
+        dy = (y - cy) / (ry if y > cy else ry * 1.12)        # a little pointier on top
+        return ((x - cx) / rx) ** 2 + dy ** 2 <= 1.0
+
+    for y in range(H):
+        for x in range(W):
+            if not inside(x, y):
+                continue
+            whole = inside(x - 1, y) and inside(x + 1, y) and inside(x, y - 1) and inside(x, y + 1)
+            dots = (math.hypot(x - cx + 3, y - cy + 4) < 2.2 or math.hypot(x - cx - 3.5, y - cy - 1) < 2.0
+                    or math.hypot(x - cx + 1, y - cy - 5) < 1.7)
+            px[y][x] = rim if not whole else spot if dots else shade(shell, 0.9) if (x - cx) / rx + (y - cy) / ry > 0.7 else shell
+    if since is not None:
+        reach = int(clamp(since / 1.6) * 15)                 # the crack creeps across
+        for i in range(reach):
+            x, y = rnd(cx - 7 + i), rnd(cy - 1 + (1 if i % 4 < 2 else -1))
+            if 0 <= x < W and 0 <= y < H and px[y][x] is not None:
+                px[y][x] = rim
+        if since > 1.7:
+            for i, (x, y) in enumerate(((3, 5), (30, 4), (5, 20), (29, 19), (10, 1), (24, 1))):
+                if (frame + i) % 2 == 0:
+                    for dx, dy in ((0, 0), (1, 0), (-1, 0), (0, 1), (0, -1)):
+                        px[y + dy][x + dx] = PAL["y"]
+    return px
+
+
 def draw(pet, frame, now=None):
     """Returns an H x W grid of RGB tuples (None = see-through) and moves the pet's particles on one step."""
     now = now or time.time()
+    if pet.egg:
+        return draw_egg(pet, frame, now)
     g, mood, sp = pet.gpu, pet.mood, pet.species
     happy = now < pet.petted_until
     px = [[None] * W for _ in range(H)]
