@@ -25,8 +25,10 @@ def load_state():
 
 
 class World:
-    def __init__(self, source, llm=None, persist=True, urls=()):
+    def __init__(self, source, llm=None, persist=True, urls=(), extras=()):
         self.source, self.llm, self.persist, self.urls = source, llm, persist, urls
+        self.extras = list(extras)       # pets that are not GPUs, such as Claude Code
+        self.own = {}                    # tokens waiting for those pets, by id
         self.demo = isinstance(source, Demo)
         self.lock = threading.Lock()
         self.gpus, self.pending = [], 0.0
@@ -41,9 +43,17 @@ class World:
     # ── sampling (background thread) ──
     def sample_once(self, with_gpus=True):
         if with_gpus:
-            gpus = self.source.sample()
+            gpus = self.source.sample() + [extra.sample() for extra in self.extras]
             with self.lock:
                 self.gpus = gpus
+        for extra in self.extras:
+            try:
+                _, eaten = extra.poll_tokens()
+            except Exception:
+                eaten = 0
+            with self.lock:
+                uuid = extra.sample().uuid
+                self.own[uuid] = self.own.get(uuid, 0) + eaten
         try:
             _, new = (self.llm or self.source).poll_tokens(self.gpus)
         except Exception:
@@ -73,8 +83,9 @@ class World:
         dt, self.last = max(1e-3, now - self.last), now
         with self.lock:
             gpus, tokens, self.pending = self.gpus, self.pending, 0.0
+            own, self.own = self.own, {}
         if gpus and not self.adopted:
-            first = next((g for g in gpus if g.hosts_llm), gpus[0])
+            first = next((g for g in gpus if g.hosts_llm and g.kind == "gpu"), gpus[0])
             self.adopted = {g.uuid for g in gpus} if self.demo else {first.uuid}
         self.waiting = [g for g in gpus if g.uuid not in self.adopted]
         gpus = [g for g in gpus if g.uuid in self.adopted]
@@ -86,12 +97,13 @@ class World:
                     self.pets[g.uuid].hatch_start, self.hatched = now, None
                 if self.demo:
                     self.pets[g.uuid].wearing = ("propeller", "bow", "glasses", "flower")[len(self.pets) % 4 - 1]
-        eaters = [g.uuid for g in gpus if g.hosts_llm] or ([max(gpus, key=lambda g: g.util).uuid] if gpus and tokens else [])
+        cards = [g for g in gpus if g.kind == "gpu"]
+        eaters = [g.uuid for g in cards if g.hosts_llm] or ([max(cards, key=lambda g: g.util).uuid] if cards and tokens else [])
         pets = []
         for g in gpus:
             pet = self.pets[g.uuid]
-            pet.approx = bool(getattr(self.llm, "approx", False))
-            pet.update(g, tokens / len(eaters) if g.uuid in eaters else 0.0, now, dt)
+            pet.approx = bool(getattr(self.llm, "approx", False)) and g.kind == "gpu"
+            pet.update(g, own.get(g.uuid, 0) if g.kind != "gpu" else tokens / len(eaters) if g.uuid in eaters else 0.0, now, dt)
             pet.px = draw(pet, self.frame_no, now)
             look = (pet.mood, pet.egg, bool(pet.hatch_start), pet.wearing, round(pet.pct, 1))
             if pet.still is None or look != pet.still_look or self.frame_no % 20 == 0:
@@ -132,7 +144,7 @@ class World:
         return self.view[self.selected] if self.view else None
 
     def feed(self):
-        pets = [p for p in self.view if p.gpu.hosts_llm] or list(self.view)
+        pets = [p for p in self.view if p.gpu.hosts_llm and p.gpu.kind == "gpu"] or [p for p in self.view if p.gpu.kind == "gpu"]
         if not pets:
             return
         pet, now = pets[0], time.time()

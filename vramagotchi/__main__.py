@@ -9,7 +9,7 @@ import time
 
 from . import term
 from .art import FPS, H, W
-from .sources import AppleSilicon, Demo, NvidiaSmi, find_llm
+from .sources import AppleSilicon, ClaudeCode, Demo, NvidiaSmi, find_llm
 from .world import World
 
 
@@ -46,6 +46,7 @@ def main():
     ap.add_argument("--lcd", action="store_true", help="show a pet on an NZXT Kraken Z cooler screen (needs liquidctl and Pillow)")
     ap.add_argument("--lcd-pet", type=int, metavar="N", help="which card's pet goes on the cooler screen (default: the one running your model)")
     ap.add_argument("--lcd-remove", action="store_true", help="take the pet off the cooler screen and exit")
+    ap.add_argument("--no-claude", action="store_true", help="don't offer a pet for Claude Code")
     ap.add_argument("--256", dest="low_color", action="store_true", help="use 256 colors if your terminal shows garbage")
     ap.add_argument("--snapshot", action="store_true", help="print one frame and exit")
     ap.add_argument("--at", type=float, help=argparse.SUPPRESS)      # demo clock position, for snapshots
@@ -77,7 +78,9 @@ def main():
         else:
             sys.exit("No supported GPU found (NVIDIA or a Mac). Try:  python3 -m vramagotchi --demo")
         urls = args.llm or [os.environ.get("VRAMAGOTCHI_LLM") or "http://127.0.0.1:8080", "http://127.0.0.1:8000"]
-        world = World(source, find_llm(urls), persist=not (args.snapshot or args.png), urls=urls)
+        claude = ClaudeCode()
+        world = World(source, find_llm(urls), persist=not (args.snapshot or args.png), urls=urls,
+                      extras=[claude] if claude.available() and not args.no_claude else [])
 
     if args.snapshot or args.png:
         if args.wear or args.species:

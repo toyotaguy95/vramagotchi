@@ -46,9 +46,12 @@ def payload(world):
             "used": round(g.mem_used / 1024, 1), "total": round(g.mem_total / 1024), "temp": round(g.temp),
             "power": round(g.power), "util": round(g.util), "rate": round(p.rate), "today": ("~" if p.approx else "") + human(p.tokens_today),
             "ever": human(p.tokens_total), "wearing": p.wearing, "items": [[i, ITEM_NAMES[i]] for i in p.unlocked],
+            "mem": f"context <b>{g.mem_used / 1000:.0f}k</b>/{g.mem_total / 1000:.0f}k tokens" if g.kind == "claude"
+                   else f"VRAM <b>{g.mem_used / 1024:.1f}</b>/{g.mem_total / 1024:.0f} GB",
+            "vit": ("writing" if g.util else "quiet") if g.kind == "claude" else "",
             "pal": palette, "px": pixels,
         })
-    return {"w": W, "h": H, "pets": pets, "waiting": [g.name for g in world.waiting]}
+    return {"w": W, "h": H, "pets": pets, "waiting": ["Claude Code" if g.kind == "claude" else "another GPU" for g in world.waiting]}
 
 
 class Handler(BaseHTTPRequestHandler):
@@ -246,7 +249,7 @@ function show(state) {
   const root = document.getElementById("pets");
   const hatch = document.getElementById("hatch");
   hatch.style.display = state.waiting.length && !document.body.classList.contains("round") && !document.body.classList.contains("bare") ? "" : "none";
-  if (state.waiting.length) { hatch.firstChild.textContent = "hatch a pet for another GPU"; hatch.firstChild.onclick = () => send("hatch"); }
+  if (state.waiting.length) { hatch.firstChild.textContent = "hatch a pet for " + state.waiting[0]; hatch.firstChild.onclick = () => send("hatch"); }
   const pets = only === null ? state.pets : state.pets.filter((p, i) => String(i) === only || p.id === only);
   if (pets.length && root.querySelector(".empty")) root.innerHTML = "";
   for (const p of pets) {
@@ -262,8 +265,8 @@ function show(state) {
     const bar = el.querySelector(".bar i");
     bar.style.width = Math.min(100, p.pct) + "%";
     bar.style.background = level(p.pct, 70, 90);
-    el.querySelector(".vram").innerHTML = `VRAM <b>${p.used.toFixed(1)}</b>/${p.total} GB`;
-    el.querySelector(".vitals").innerHTML = p.temp ? `<b style="color:${level(p.temp, 70, 82)}">${p.temp}°C</b> · ${p.power} W · ${p.util}%` : `${p.util}% busy`;
+    el.querySelector(".vram").innerHTML = p.mem;
+    el.querySelector(".vitals").innerHTML = p.vit ? p.vit : p.temp ? `<b style="color:${level(p.temp, 70, 82)}">${p.temp}°C</b> · ${p.power} W · ${p.util}%` : `${p.util}% busy`;
     el.querySelector(".ate").innerHTML = `ate <b>${p.today}</b> tokens today · ${p.ever} ever`;
     el.querySelector(".rate").innerHTML = p.rate > 1 ? `<b style="color:var(--warn)">${p.rate} tok/s</b>` : "";
     const key = p.items.map(i => i[0]).join() + "|" + p.wearing;

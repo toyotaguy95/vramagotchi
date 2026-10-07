@@ -8,6 +8,17 @@ COLORS = [(150, 214, 80), (104, 196, 244), (188, 152, 246), (255, 176, 116), (25
 SPECIES = ("cat", "bear", "bunny", "sprout")
 NAMES = ["Mochi", "Biscuit", "Tofu", "Nugget", "Pixel", "Waffle", "Pickle", "Bean", "Noodle", "Dumpling", "Gizmo", "Sprout"]
 
+CLAUDE_LINES = {
+    "sleeping": ["zzz... waiting for a prompt", "wake me when you need code", "zzz... dreaming in tokens"],
+    "idle": ["what are we building?", "my context is {pct:.0f}% full", "ready when you are", "I read your whole repo. no comment."],
+    "stuffed": ["context {pct:.0f}% full. I can barely think", "so many tokens in my head", "maybe start a fresh session?"],
+    "eating": ["nom nom, fresh tokens", "{rate:.0f} tokens a second!", "writing, writing, writing"],
+    "working": ["thinking hard"],
+    "fainted": ["out of context...", "too... much... conversation"],
+    "hungry": ["{hungry:.0f} hours since my last prompt", "is Claude on holiday?"],
+    "petted": ["hehe", "again!", "you're absolutely right to pet me"],
+}
+
 LINES = {
     "sleeping": ["zzz... dreaming of matrix multiplications", "wake me when there's a prompt", "five more minutes", "zzz... float16... zzz"],
     "idle": ["feed me tokens?", "I'm holding {used:.1f} GB. it's heavy.", "is anyone going to prompt me", "just vibing at {temp:.0f}°C", "I could really go for a prompt"],
@@ -46,7 +57,7 @@ class Pet:
         self.sleep_after = sleep_after
         self.name = saved.get("name") or NAMES[(zlib.crc32(gpu.uuid.encode()) + slot) % len(NAMES)]
         self.color_index = saved.get("color", slot) % len(COLORS)
-        self.color = COLORS[self.color_index]
+        self.color = COLORS[self.color_index] if gpu.kind == "gpu" else (222, 132, 98)
         self.species_index = saved.get("species", slot) % len(SPECIES)
         self.species = SPECIES[self.species_index]
         self.born = saved.get("born", now)
@@ -131,7 +142,8 @@ class Pet:
             key = "sweating"
         else:
             key = self.mood
-        return random.choice(LINES[key]).format(used=g.mem_used / 1024, pct=self.pct * 100, temp=g.temp, util=g.util,
+        lines = CLAUDE_LINES if g.kind == "claude" else LINES
+        return random.choice(lines.get(key) or lines["idle"]).format(used=g.mem_used / 1024, pct=self.pct * 100, temp=g.temp, util=g.util,
                                                 rate=self.rate, hungry=hungry)
 
     def update(self, gpu, tokens, now, dt):
@@ -176,7 +188,7 @@ class Pet:
             self.faints += 1
 
         earned = next((item for item, _, test in EARNED if item not in self.unlocked and test(self)), None)
-        change = gpu.mem_used - self._settled if fresh and abs(delta) < 150 else 0.0
+        change = gpu.mem_used - self._settled if fresh and abs(delta) < 150 and gpu.kind == "gpu" else 0.0
         if fresh and abs(delta) < 150:
             self._settled = gpu.mem_used
         if earned:
@@ -206,7 +218,7 @@ class Pet:
             extra.append("sweating")
         if self.stuffed and self.mood in ("idle", "eating", "working"):
             extra.append("stuffed")
-        base = {"fainted": "fainted (out of memory)", "overheating": "OVERHEATING", "eating": "eating",
+        base = {"fainted": "fainted (out of context)" if self.gpu.kind == "claude" else "fainted (out of memory)", "overheating": "OVERHEATING", "eating": "eating",
                 "working": "working out", "idle": "chilling",
                 "sleeping": "food coma" if self.stuffed else "sleeping"}[self.mood]
         return " · ".join([base] + extra)

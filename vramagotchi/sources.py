@@ -6,6 +6,7 @@ import subprocess
 import time
 import urllib.request
 from dataclasses import dataclass
+from pathlib import Path
 
 from .util import clamp
 
@@ -24,6 +25,7 @@ class Gpu:
     power: float = 0.0       # W
     hosts_llm: bool = False
     stamp: float = 0.0       # when this sample was taken
+    kind: str = "gpu"        # "claude" for the Claude Code pet, whose "memory" is its context window in tokens
 
 
 def num(text):
@@ -190,6 +192,87 @@ class LlamaCpp:
             text = (json.load(r)["choices"][0]["message"].get("content") or "").strip()
         text = text.splitlines()[0].strip().strip('"') if text else ""
         return text[:90]
+
+
+class ClaudeCode:
+    """A pet for Claude Code. Claude Code keeps a record of every reply on this computer, with token counts;
+    this reads new lines from those records. The pet eats the tokens Claude writes, and its belly is how
+    full the context window of the most recent session is. Nothing is sent anywhere."""
+
+    def __init__(self, root=None):
+        self.root = Path(root or Path.home() / ".claude" / "projects")
+        self.offsets, self.counted = {}, {}
+        self.context, self.window, self.last_scan, self.busy_until = 0, 200_000, 0.0, 0.0
+        for path in self._recent(3600):                  # start from now: old replies are not eaten again
+            self.offsets[path] = path.stat().st_size
+        newest = max(self.offsets, key=lambda p: p.stat().st_mtime, default=None)
+        if newest:
+            with open(newest, "rb") as f:
+                f.seek(max(0, self.offsets[newest] - 400_000))
+                for line in f.read().decode("utf-8", "ignore").splitlines():
+                    self._read(line, count=False)
+
+    def available(self):
+        return self.root.is_dir()
+
+    def _recent(self, seconds):
+        cutoff, found = time.time() - seconds, []
+        try:
+            for folder in self.root.iterdir():
+                if folder.is_dir():
+                    found += [p for p in folder.glob("*.jsonl") if p.stat().st_mtime >= cutoff]
+        except OSError:
+            pass
+        return found
+
+    def _read(self, line, count=True):
+        if '"usage"' not in line:
+            return 0
+        try:
+            entry = json.loads(line)
+        except ValueError:
+            return 0
+        msg = entry.get("message") or {}
+        use = msg.get("usage") or {}
+        if entry.get("type") != "assistant" or not use:
+            return 0
+        if not entry.get("isSidechain"):
+            self.context = (use.get("input_tokens") or 0) + (use.get("cache_read_input_tokens") or 0) + (use.get("cache_creation_input_tokens") or 0)
+            self.window = 1_000_000 if self.context > 200_000 else 200_000
+        key, out = msg.get("id") or entry.get("uuid"), use.get("output_tokens") or 0
+        new = max(0, out - self.counted.get(key, 0))     # one reply is written as several lines; count it once
+        self.counted[key] = max(out, self.counted.get(key, 0))
+        return new if count else 0
+
+    def poll_tokens(self, gpus=()):
+        now, new = time.time(), 0
+        if now - self.last_scan < 1.0:
+            return now < self.busy_until, 0
+        self.last_scan = now
+        for path in self._recent(120):
+            start = self.offsets.get(path, 0)
+            try:
+                size = path.stat().st_size
+                if size <= start:
+                    continue
+                with open(path, "rb") as f:
+                    f.seek(start)
+                    chunk = f.read()
+            except OSError:
+                continue
+            end = chunk.rfind(b"\n") + 1                # leave a half-written last line for next time
+            self.offsets[path] = start + end
+            for line in chunk[:end].decode("utf-8", "ignore").splitlines():
+                new += self._read(line)
+        if new:
+            self.busy_until = now + 3
+        if len(self.counted) > 5000:
+            self.counted = dict(list(self.counted.items())[-1000:])
+        return now < self.busy_until, new
+
+    def sample(self):
+        return Gpu(90, "claude-code", "Claude Code", 100.0 if time.time() < self.busy_until else 0.0,
+                   float(self.context), float(self.window), 0.0, 0.0, True, time.time(), "claude")
 
 
 class Ollama:

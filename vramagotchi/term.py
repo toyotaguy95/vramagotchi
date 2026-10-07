@@ -129,6 +129,8 @@ def block(pet, k, width, rows, chosen):
     filled = round(clamp(pet.pct) * 12)
     bar = fg(level(pet.pct * 100, 70, 90)) + "█" * filled + RESET + DIM + "░" * (12 - filled) + RESET
     vitals = f"{fg(level(g.temp, 70, 82))}{g.temp:.0f}°C{RESET}  {g.power:.0f}W  {g.util:.0f}%" if g.temp else f"{g.util:.0f}% busy"
+    if g.kind == "claude":
+        vitals = "writing" if g.util else "quiet"
     if pet.rate > 1:
         vitals += f"  {fg((255, 214, 10))}{'~' if pet.approx else ''}{pet.rate:.0f} tok/s{RESET}"
     mark = f"{fg((255, 214, 10))}▸{RESET} " if chosen else ""
@@ -140,6 +142,7 @@ def block(pet, k, width, rows, chosen):
     info = [                                           # most important first
         name,
         pet.label(),
+        f"CTX  {bar} {g.mem_used / 1000:.0f}k/{g.mem_total / 1000:.0f}k" if g.kind == "claude" else
         f"{'VRAM' if g.temp else 'MEM '} {bar} {g.mem_used / 1024:.1f}/{g.mem_total / 1024:.0f}G",
         vitals,
         f"{DIM}ate {'~' if pet.approx else ''}{human(pet.tokens_today)} tokens today · {human(pet.tokens_total)} ever{RESET}",
@@ -183,7 +186,7 @@ def render(world, pets, cols, rows):
     if footer:
         keys = "[f] feed  [p] pet  [a] dress up  " + ("[tab] next pet  " if len(pets) > 1 else "") + "[q] quit"
         if world.waiting:
-            keys = "[n] hatch a pet for another GPU  " + keys
+            keys = f"[n] hatch a pet for {'Claude Code' if world.waiting[0].kind == 'claude' else 'another GPU'}  " + keys
         if any(p.egg and not p.hatch_start for p in pets):
             keys = "[h] hatch your egg   [q] quit"
         elif fit < len(pets):
