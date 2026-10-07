@@ -113,7 +113,7 @@ export const register: Register = on => {
     const { Box, Button, Raster, Text } = $.ui.resolve(e)
 
     return (
-      <Box>
+      <Box paddingTop={1}>
         <Raster key="pet" columns={COLUMNS} rows={ROWS} cells={picture} />
         <Box flexDirection="column" paddingLeft={2}>
           <Text bold>Claude's pet · {mood}</Text>
