@@ -1,0 +1,21 @@
+[build-system]
+requires = ["setuptools>=68"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "vramagotchi"
+version = "0.2.0"
+description = "A pet that lives on your GPU: it gets fat on VRAM, eats the tokens your local model generates, and sweats when the card runs hot."
+readme = "README.md"
+requires-python = ">=3.9"
+license = { text = "MIT" }
+dependencies = []
+
+[project.optional-dependencies]
+lcd = ["pillow>=10.1", "liquidctl>=1.13"]
+
+[project.scripts]
+vramagotchi = "vramagotchi.__main__:main"
+
+[tool.setuptools]
+packages = ["vramagotchi"]
