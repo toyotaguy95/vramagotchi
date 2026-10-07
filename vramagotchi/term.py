@@ -1,5 +1,6 @@
 """The terminal view: pixels as half-block characters, plus the keyboard."""
 
+import math
 import os
 import re
 import select
@@ -79,41 +80,51 @@ def clip(line, width):
     return "".join(out) + RESET
 
 
-def sprite(pet, scale, cols, rows):
-    """The pet's pixels as text, trimmed to fit: empty space goes first, then the top of the picture."""
-    px = pet.px
-    used = [y for y in range(H) if any(px[y])]
-    top = min(used) if used else 0
-    top -= top % 2                                    # keep pixel pairs aligned for half-block rows
-    per_row = 2 if scale == 1 else 1
-    keep = min(H - top, rows * per_row)
-    start = H - keep if keep < H - top else top       # too short: lose the top, keep the feet
-    start -= start % 2 if scale == 1 else 0
-    wide = min(W, cols // scale)
-    left = (W - wide) // 2
-    part = [row[left:left + wide] for row in px[start:]]
+SCALES = (3, 2, 1, 0.5)        # whole-number steps only, so pixels always stay square and lined up
+
+
+def scaled(px, k):
+    """The pixel grid at scale k: blown up for big windows, or halved for small ones."""
+    if k >= 1:
+        k = int(k)
+        return [[c for c in row for _ in range(k)] for row in px for _ in range(k)]
     out = []
-    if scale == 1:
-        for y in range(0, len(part) - 1, 2):
-            cells = []
-            for up, down in zip(part[y], part[y + 1]):
-                if up is None and down is None:
-                    cells.append(RESET + " ")
-                elif down is None:
-                    cells.append(RESET + fg(up) + "▀")
-                elif up is None:
-                    cells.append(RESET + fg(down) + "▄")
-                else:
-                    cells.append(fg(up) + bg(down) + "▀")
-            out.append("".join(cells) + RESET)
-    else:
-        for row in part:
-            out.append("".join(RESET + " " * scale if c is None else bg(c) + " " * scale for c in row) + RESET)
-    return out[-rows:] if rows else []
+    for y in range(0, H - 1, 2):
+        line = []
+        for x in range(0, W - 1, 2):
+            cell = [c for c in (px[y][x], px[y][x + 1], px[y + 1][x], px[y + 1][x + 1]) if c is not None]
+            # keep the block if at least half of it is filled; the most common colour wins, darker on a tie
+            line.append(max(set(cell), key=lambda c: (cell.count(c), -sum(c))) if len(cell) >= 2 else None)
+        out.append(line)
+    return out
 
 
-def block(pet, scale, width, rows, chosen):
-    """One pet's column, using at most `rows` lines: detail drops away as the space shrinks."""
+def art_rows(k):
+    return math.ceil(H * k / 2)
+
+
+def sprite(pet, k):
+    grid = scaled(pet.px, k)
+    if len(grid) % 2:
+        grid.append([None] * len(grid[0]))
+    out = []
+    for y in range(0, len(grid), 2):
+        cells = []
+        for up, down in zip(grid[y], grid[y + 1]):
+            if up is None and down is None:
+                cells.append(RESET + " ")
+            elif down is None:
+                cells.append(RESET + fg(up) + "▀")
+            elif up is None:
+                cells.append(RESET + fg(down) + "▄")
+            else:
+                cells.append(fg(up) + bg(down) + "▀")
+        out.append("".join(cells) + RESET)
+    return out
+
+
+def block(pet, k, width, rows, chosen):
+    """One pet's column in at most `rows` lines. The pet is never cropped; text drops away first."""
     g, now = pet.gpu, time.time()
     filled = round(clamp(pet.pct) * 12)
     bar = fg(level(pet.pct * 100, 70, 90)) + "█" * filled + RESET + DIM + "░" * (12 - filled) + RESET
@@ -125,7 +136,7 @@ def block(pet, scale, width, rows, chosen):
     if pet.egg:
         name = f"{mark}{BOLD}???{RESET} · {g.name}"
     if vlen(name) > width:
-        name = f"{mark}{BOLD}{pet.name}{RESET}"
+        name = f"{mark}{BOLD}{'???' if pet.egg else pet.name}{RESET}"
     info = [                                           # most important first
         name,
         pet.label(),
@@ -133,38 +144,36 @@ def block(pet, scale, width, rows, chosen):
         vitals,
         f"{DIM}ate {'~' if pet.approx else ''}{human(pet.tokens_today)} tokens today · {human(pet.tokens_total)} ever{RESET}",
     ]
-    tall = H // 2 if scale == 1 else H                # sprite rows at full height
-    used = [y for y in range(H) if any(pet.px[y])]
-    need = (H - (min(used) if used else 0) + 1) // 2 if scale == 1 else H - (min(used) if used else 0)
-    want_info = max(1, min(len(info), rows - need))    # the whole pet comes before extra detail
-    art_rows = max(0, min(tall, rows - want_info))
-    spare = rows - want_info - art_rows
+    info = [text for text in info if vlen(text) <= width or text is name]
+    want_info = max(1, min(len(info), rows - art_rows(k)))
+    spare = rows - want_info - art_rows(k)
     say = 4 if spare >= 4 else 3 if spare >= 3 else 0
-    lines = bubble(pet.line, width, say) if say else []
-    lines += [center(row, width) for row in sprite(pet, scale, width, art_rows)]
-    lines += [center(clip(text, width), width) for text in info[:want_info]]
+    lines = bubble(pet.line, width, say) if say and width >= 20 else []
+    lines += [center(row, width) for row in sprite(pet, k)]
+    lines += [center(text, width) for text in info[:want_info]]
     return [clip(line, width) for line in lines]
 
 
 def render(world, pets, cols, rows):
     if not pets:
         return "\x1b[H" + clip(center("looking for GPUs...", cols), cols) + "\x1b[J"
-    if cols < 16 or rows < 4:                          # too small for a picture: one line per pet
+    footer = 1 if rows >= 10 else 0
+    body = rows - footer
+
+    def across(k):                                     # how many pets fit side by side at this scale
+        width = min(cols, max(int(W * k), 36 if k >= 1 else 22))
+        return width, (cols + 2) // (width + 2) if cols >= W * k and body >= art_rows(k) + 1 else 0
+
+    k = next((k for k in SCALES if across(k)[1] >= len(pets)), None) or next((k for k in SCALES if across(k)[1] >= 1), None)
+    if k is None:                                      # too small for a picture: one line per pet
         lines = [clip(f"{p.name}: {p.label()}" + (f" {p.rate:.0f} tok/s" if p.rate > 1 else ""), cols) for p in pets][:rows]
         return "\x1b[?2026h\x1b[H" + "\n".join(line + "\x1b[K" for line in lines) + "\x1b[J\x1b[?2026l"
-    scale = 1
-    for bigger in (2, 3):                              # grow with the window when everything still fits
-        if cols >= len(pets) * (W * bigger + 2) and rows >= (H if bigger > 1 else H // 2) * (bigger - 1 if bigger > 2 else 1) + 11:
-            scale = bigger
-    scale = min(scale, 2)
-    footer = rows >= 9
-    title = rows >= (H // 2 if scale == 1 else H) + 11
-    body = rows - footer - title
-    width = min(cols, max(W * scale, 36))
-    fit = max(1, min(len(pets), (cols + 2) // (width + 2)))
+    width, fit = across(k)
+    fit = min(fit, len(pets))
+    title = 1 if body >= art_rows(k) + 10 else 0
     first = min(max(0, world.selected - fit + 1), len(pets) - fit)   # keep the chosen pet in view
     shown = pets[first:first + fit]
-    blocks = [block(p, scale, width, body, len(pets) > 1 and first + i == world.selected) for i, p in enumerate(shown)]
+    blocks = [block(p, k, width, body - title, len(pets) > 1 and first + i == world.selected) for i, p in enumerate(shown)]
     tallest = max(len(b) for b in blocks)
     blocks = [[" " * width] * (tallest - len(b)) + b for b in blocks]
     pad = " " * max(0, (cols - (fit * width + (fit - 1) * 2)) // 2)
@@ -176,10 +185,10 @@ def render(world, pets, cols, rows):
             keys = "[n] hatch a pet for another GPU  " + keys
         if any(p.egg and not p.hatch_start for p in pets):
             keys = "[h] hatch your egg   [q] quit"
-        if fit < len(pets):
+        elif fit < len(pets):
             keys = f"[tab] next pet ({world.selected + 1}/{len(pets)})  [f] feed  [p] pet  [a] dress up  [q] quit"
         if vlen(keys) > cols:
-            keys = "f feed · p pet · a dress · q quit" if cols >= 34 else "q quit"
+            keys = ("h hatch · q quit" if "hatch your egg" in keys else "f feed · p pet · a dress · q quit") if cols >= 34 else "q quit"
         lines.append(center(f"{DIM}{keys}  {world.note}{RESET}" if vlen(keys) + len(world.note) + 2 <= cols else f"{DIM}{keys}{RESET}", cols))
     lines = [clip(line, cols) for line in lines[:rows]]
     return "\x1b[?2026h\x1b[H" + "\n".join(line + "\x1b[K" for line in lines) + "\x1b[J\x1b[?2026l"
