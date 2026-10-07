@@ -239,8 +239,18 @@ class Ollama:
             self._generate("hi")
             self.last = time.time()
             return True, 0
-        busy = max((g.util for g in gpus), default=0.0) >= 40
+        # Generating means the GPU is busy AND Ollama's own process is working; a busy GPU alone could be anything.
+        busy = max((g.util for g in gpus), default=0.0) >= 40 and self.process_cpu() >= 8
         return busy, self.speed[self.model] * dt if busy else 0
+
+    @staticmethod
+    def process_cpu():
+        """Total CPU percent used by Ollama's processes right now."""
+        try:
+            out = subprocess.run(["ps", "-axo", "pcpu=,command="], capture_output=True, text=True, timeout=3).stdout
+        except (OSError, subprocess.SubprocessError):
+            return 100.0                     # can't tell: fall back to trusting the GPU reading
+        return sum(num(line.split(None, 1)[0]) for line in out.splitlines() if "ollama" in line.lower() and len(line.split(None, 1)) == 2)
 
     def say(self, system, user):
         if not self.model:
