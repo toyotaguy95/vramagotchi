@@ -1,8 +1,9 @@
 <title>VRAMagotchi Board</title>
 <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Pixelify+Sans:wght@500;700&family=IBM+Plex+Mono:wght@400;500;600&display=swap">
 <style>
-  /* Layout: one narrow column, like a terminal window. A podium for the top three, then a plain ranked list.
-     Every colour comes from the pet's own sprite palette, so the page and the pets are one world. One look, dark. */
+  /* Layout: one narrow column. A podium for the top three and a ranked list, then the toy-shop part: what a pet is,
+     how it grows, what it can collect. Every colour comes from the pet's own sprite palette (coat, belly, and the
+     bright token crumbs it eats), so the page and the pets are one world. One look: night, with toy-bright tiles. */
   :root {
     color-scheme: dark;
     --ink: #1b1626;        /* the sprite's eye colour, darkened: the ground */
@@ -14,6 +15,7 @@
     --gold: #ffd60a;       /* a token particle: first place only */
     --teal: #40e0d0;
     --pink: #ff96a0;
+    --violet: #aa82ff;
     --display: "Pixelify Sans", "Courier New", monospace;
     --mono: "IBM Plex Mono", ui-monospace, "SFMono-Regular", Menlo, Consolas, monospace;
   }
@@ -31,7 +33,29 @@
   .note { border: 1px dashed var(--line); color: var(--dim); padding: 8px 12px; font-size: 13px; }
   .note b { color: var(--gold); font-weight: 600; }
 
-  h2 { font: 700 22px/1.2 var(--display); margin: 0 0 14px; color: var(--cream); }
+  h2 { font: 700 24px/1.2 var(--display); margin: 0 0 14px; color: var(--cream); }
+  section { scroll-margin-top: 16px; }
+
+  /* a row of token crumbs marching along: the page's divider */
+  .crumbs { height: 6px; margin-bottom: 14px; background: repeating-linear-gradient(90deg, var(--gold) 0 6px, transparent 6px 18px, var(--teal) 18px 24px, transparent 24px 36px, var(--violet) 36px 42px, transparent 42px 54px, var(--pink) 54px 60px, transparent 60px 72px); animation: march 2.4s steps(12) infinite; }
+  @keyframes march { to { background-position: 72px 0; } }
+  @media (prefers-reduced-motion: reduce) { .crumbs { animation: none; } }
+
+  nav { display: flex; flex-wrap: wrap; gap: 8px; }
+  nav a { font: 600 13px/1 var(--mono); color: var(--cream); text-decoration: none; border: 1px solid var(--line); border-radius: 999px; padding: 9px 14px; }
+  nav a:hover { border-color: var(--pet); color: var(--pet); }
+
+  .about { display: flex; flex-direction: column; gap: 8px; }
+  .about p { margin: 0; color: var(--dim); max-width: 60ch; }
+  .about p b { color: var(--cream); font-weight: 600; }
+
+  /* character cards: one toy-bright tile per stage or item */
+  .cards { display: grid; grid-template-columns: repeat(auto-fill, minmax(124px, 1fr)); gap: 10px; }
+  .card { border-radius: 18px; padding: 12px 10px 10px; display: flex; flex-direction: column; align-items: center; gap: 4px; text-align: center; min-width: 0; background: color-mix(in srgb, var(--tint) 20%, var(--panel)); border: 2px solid color-mix(in srgb, var(--tint) 55%, var(--panel)); }
+  .card canvas { width: 100px; height: 60px; }
+  .card .label { font: 700 17px/1.15 var(--display); color: var(--cream); }
+  .card .how { font-size: 12px; line-height: 1.35; color: var(--dim); }
+  .card .kind { font: 600 10px/1 var(--mono); letter-spacing: 0.08em; text-transform: uppercase; color: var(--tint); margin-top: 2px; }
 
   /* the podium */
   .podium { display: grid; grid-template-columns: 1fr 1.25fr 1fr; gap: 10px; align-items: end; }
@@ -77,10 +101,11 @@
   <header>
     <h1>VRAMa<span>gotchi</span> Board</h1>
     <p class="lede">Pets that live in Claude Code and eat the tokens it writes. These are the best fed.</p>
+    <nav aria-label="On this page"><a href="#board">The board</a><a href="#what">What is it?</a><a href="#grow">Growing up</a><a href="#collect">Things to collect</a><a href="#get">Get a pet</a></nav>
     <p class="note" id="note" hidden><b>Example pets.</b> The board is not open yet, so these ten are made up to show how it will look.</p>
   </header>
 
-  <section aria-label="Top three">
+  <section aria-label="Top three" id="board">
     <div class="podium" id="podium"></div>
   </section>
 
@@ -89,7 +114,28 @@
     <ol class="rows" id="rows"></ol>
   </section>
 
-  <section class="get">
+  <section class="about" id="what">
+    <div class="crumbs"></div>
+    <h2>What is a VRAMagotchi?</h2>
+    <p>A small pixel pet that sits above your prompt in Claude Code. <b>Every token Claude writes is food.</b></p>
+    <p>It hatches from an egg on your first prompt. It naps when you stop typing, gets stuffed when the context window fills up, and faints when it runs out.</p>
+    <p>Feed it for long enough and it stops being a blob.</p>
+  </section>
+
+  <section id="grow">
+    <div class="crumbs"></div>
+    <h2>Growing up</h2>
+    <div class="cards" id="stages"></div>
+  </section>
+
+  <section id="collect">
+    <div class="crumbs"></div>
+    <h2>Things to collect</h2>
+    <div class="cards" id="items"></div>
+  </section>
+
+  <section class="get" id="get">
+    <div class="crumbs"></div>
     <h2>Get a pet</h2>
     <p>Type this inside Claude Code. You get an egg, and your next prompt hatches it.</p>
     <div class="cmd"><code id="install">/plugin install vramagotchi --marketplace toyotaguy95/vramagotchi</code><button type="button" data-copy="install">Copy</button></div>
@@ -98,6 +144,7 @@
   </section>
 
   <section class="rules">
+    <div class="crumbs"></div>
     <h2>How the board counts</h2>
     <ul>
       <li><b>A belly holds one day of food.</b> A pet's score grows by at most 1M tokens a day, however much it claims to have eaten.</li>
@@ -124,6 +171,18 @@ const EXAMPLES = [
   ['Waffle', 912_000, 'flame', false, 8, 8], ['Bean', 233_000, 'headphones', false, 3, 5], ['Pickle', 61_500, 'flower', false, 2, 2], ['Nugget', 4_200, null, false, 1, 1],
 ]
 const STAGES = [['baby', 0], ['kid', 25e3], ['teen', 250e3], ['adult', 2.5e6], ['legend', 25e6]]
+const STAGE_NOTES = { baby: 'fresh out of the egg', kid: 'grows ears', teen: 'grows a tail', adult: 'horns and wings', legend: 'all of it, in gold' }
+const TINTS = ['var(--gold)', 'var(--teal)', 'var(--violet)', 'var(--pink)', 'var(--pet)']
+const COLLECT = [
+  ['headphones', 'Headphones', 'eat 10k tokens', 'milestone'], ['wizard', 'Wizard hat', 'eat 100k tokens', 'milestone'],
+  ['crown', 'Crown', 'eat 1M tokens', 'milestone'], ['tophat', 'Top hat', 'eat 10M tokens', 'milestone'],
+  ['bandage', 'Bandage', 'live through a compaction', 'deed'], ['sweatband', 'Sweatband', '10k tokens in one turn', 'deed'],
+  ['flame', 'Streak flame', 'fed 7 days in a row', 'deed'], ['bow', 'Bow', 'petted 25 times', 'deed'],
+  ['flower', 'Flower', 'a lucky find', 'common'], ['sprout', 'Sprout', 'a lucky find', 'common'],
+  ['propeller', 'Propeller cap', 'a rare find', 'rare'], ['halo', 'Halo', 'a rare find', 'rare'],
+  ['star', 'Golden star', 'a legendary find', 'legendary'], ['champion', "Champion's crown", 'be first on the board', 'only one'],
+]
+const KIND_TINT = { milestone: 'var(--teal)', deed: 'var(--violet)', common: 'var(--dim)', rare: 'var(--pink)', legendary: 'var(--gold)', 'only one': 'var(--gold)' }
 
 const human = n => n >= 1e6 ? `${+(n / 1e6).toFixed(1)}M` : n >= 1e3 ? `${+(n / 1e3).toFixed(1)}k` : `${Math.round(n)}`
 const stageOf = score => STAGES.filter(([, at]) => score >= at).pop()[0]
@@ -138,7 +197,7 @@ function draw(canvas, pet, frame) {
   }))
   const first = pet.rank === 1
   stamp(ART.faces[first ? 'happy' : frame % 6 === 5 ? 'blink' : 'open'], body.face, 3, true)
-  const wearing = first ? 'champion' : pet.wearing
+  const wearing = first ? 'champion' : pet.wearing     // on the board, first place always wears the crown
   stamp(wearing && ART.items[wearing], body.lift, 0, false)
   if (first || ((pet.shiny || pet.stage === 'legend') && frame % 6 < 2)) stamp(ART.floats[frame % 2 ? 'sparkB' : 'sparkA'], 0, 0, false)
   const palette = Object.assign({}, ART.colors, ART.coats[body.coat] || {}, pet.shiny ? ART.coats.shiny : {})
@@ -156,7 +215,7 @@ const el = (tag, cls, text) => {
   if (text !== undefined) node.textContent = text     // names come from strangers: always as text, never as HTML
   return node
 }
-const sprite = pet => { const c = el('canvas'); c.width = 20; c.height = 12; c.pet = pet; c.setAttribute('role', 'img'); c.setAttribute('aria-label', `${pet.name}, a ${pet.stage}`); return c }
+const sprite = pet => { const c = el('canvas'); c.width = 20; c.height = 12; c.pet = pet; c.setAttribute('role', 'img'); c.setAttribute('aria-label', pet.wearing ? `${pet.name}: a ${pet.stage} wearing it` : `${pet.name}, a ${pet.stage}`); return c }
 const facts = pet => `fed ${pet.days} day${pet.days === 1 ? '' : 's'}` + (pet.streak > 1 ? ` · ${pet.streak}-day streak` : '')
 
 function show(pets) {
@@ -186,6 +245,18 @@ function show(pets) {
   if (pets.length <= 3) rows.append(el('li', 'empty', pets.length ? 'Nobody else yet.' : 'Install the pet below and join.'))
   paint()
 }
+
+function card(tint, pet, label, how, kind) {
+  const box = el('div', 'card')
+  box.style.setProperty('--tint', tint)
+  box.append(sprite(pet), el('div', 'label', label), el('div', 'how', how))
+  if (kind) box.append(el('div', 'kind', kind))
+  return box
+}
+document.getElementById('stages').append(...STAGES.map(([name, at], i) =>
+  card(TINTS[i], { name, stage: name }, name, at ? `at ${human(at)} tokens: ${STAGE_NOTES[name]}` : STAGE_NOTES[name])))
+document.getElementById('items').append(...COLLECT.map(([id, label, how, kind]) =>
+  card(KIND_TINT[kind], { name: label, stage: 'kid', wearing: id }, label, how, kind)))
 
 let frame = 0
 const paint = () => document.querySelectorAll('canvas').forEach(c => draw(c, c.pet, frame))
