@@ -15,7 +15,14 @@ export type Save = {
   lastDay: number
   compactions: number
   pets: number
+  /** The leaderboard: whether the owner put the pet there, and the id and key it reports with. */
+  isOnBoard: boolean
+  boardId: string
+  boardKey: string
 }
+
+/** Where the pet stands on the leaderboard, as the board last said. */
+export type Standing = { rank: number | null; score: number; sentAt: number }
 
 declare module 'claude-code' {
   interface PluginState {
@@ -29,6 +36,7 @@ declare module 'claude-code' {
       isHidden: boolean
       partyUntil: number
       lovedUntil: number
+      standing: Standing
     }
   }
 }

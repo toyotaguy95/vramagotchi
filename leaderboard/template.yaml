@@ -1,0 +1,140 @@
+AWSTemplateFormatVersion: '2010-09-09'
+Transform: AWS::Serverless-2016-10-31
+Description: >
+  VRAMagotchi pet leaderboard. Nothing here runs when nobody is using it: an HTTP API in front of one
+  Lambda function, one DynamoDB table billed per request, and a static page in S3 behind CloudFront.
+
+Parameters:
+  AlertEmail:
+    Type: String
+    Default: ''
+    Description: Where to send a warning when the month's AWS bill passes 5 and 10 dollars. Leave empty for none.
+  RequestsPerSecond:
+    Type: Number
+    Default: 5
+    Description: The most requests the API accepts each second. Anything over this is turned away and costs nothing.
+
+Conditions:
+  HasAlertEmail: !Not [!Equals [!Ref AlertEmail, '']]
+
+Resources:
+  # One row per pet. The "board" index keeps every pet sorted by its place, so the top 100 is one cheap read.
+  Pets:
+    Type: AWS::DynamoDB::Table
+    Properties:
+      BillingMode: PAY_PER_REQUEST
+      AttributeDefinitions:
+        - { AttributeName: id, AttributeType: S }
+        - { AttributeName: board, AttributeType: S }
+        - { AttributeName: place, AttributeType: N }
+      KeySchema:
+        - { AttributeName: id, KeyType: HASH }
+      GlobalSecondaryIndexes:
+        - IndexName: board
+          KeySchema:
+            - { AttributeName: board, KeyType: HASH }
+            - { AttributeName: place, KeyType: RANGE }
+          Projection: { ProjectionType: ALL }
+      PointInTimeRecoverySpecification: { PointInTimeRecoveryEnabled: true }
+
+  # The speed limit lives here. It is what keeps a flood of requests from becoming a bill.
+  Api:
+    Type: AWS::Serverless::HttpApi
+    Properties:
+      CorsConfiguration:
+        AllowOrigins: ['*']
+        AllowMethods: [GET]
+      DefaultRouteSettings:
+        ThrottlingRateLimit: !Ref RequestsPerSecond
+        ThrottlingBurstLimit: 20
+
+  Board:
+    Type: AWS::Serverless::Function
+    Properties:
+      Runtime: python3.12
+      Handler: handler.handle
+      CodeUri: api/
+      MemorySize: 256
+      Timeout: 5
+      Environment:
+        Variables: { TABLE: !Ref Pets }
+      Policies:
+        - DynamoDBCrudPolicy: { TableName: !Ref Pets }     # this table and nothing else
+      Events:
+        ReadBoard: { Type: HttpApi, Properties: { ApiId: !Ref Api, Method: GET, Path: /board } }
+        Report: { Type: HttpApi, Properties: { ApiId: !Ref Api, Method: POST, Path: /pets } }
+        Leave: { Type: HttpApi, Properties: { ApiId: !Ref Api, Method: DELETE, Path: /pets } }
+
+  # The page. The bucket is private; only CloudFront may read it.
+  PageBucket:
+    Type: AWS::S3::Bucket
+    Properties:
+      PublicAccessBlockConfiguration: { BlockPublicAcls: true, BlockPublicPolicy: true, IgnorePublicAcls: true, RestrictPublicBuckets: true }
+
+  PageAccess:
+    Type: AWS::CloudFront::OriginAccessControl
+    Properties:
+      OriginAccessControlConfig:
+        Name: !Sub '${AWS::StackName}-page'
+        OriginAccessControlOriginType: s3
+        SigningBehavior: always
+        SigningProtocol: sigv4
+
+  Page:
+    Type: AWS::CloudFront::Distribution
+    Properties:
+      DistributionConfig:
+        Enabled: true
+        Comment: VRAMagotchi leaderboard page
+        DefaultRootObject: index.html
+        PriceClass: PriceClass_100
+        HttpVersion: http2
+        Origins:
+          - Id: page
+            DomainName: !GetAtt PageBucket.RegionalDomainName
+            OriginAccessControlId: !GetAtt PageAccess.Id
+            S3OriginConfig: { OriginAccessIdentity: '' }
+        DefaultCacheBehavior:
+          TargetOriginId: page
+          ViewerProtocolPolicy: redirect-to-https
+          Compress: true
+          CachePolicyId: 658327ea-f89d-4fab-a63d-7e88639e58f6     # AWS's managed "CachingOptimized" policy
+
+  PageBucketPolicy:
+    Type: AWS::S3::BucketPolicy
+    Properties:
+      Bucket: !Ref PageBucket
+      PolicyDocument:
+        Version: '2012-10-17'
+        Statement:
+          - Effect: Allow
+            Principal: { Service: cloudfront.amazonaws.com }
+            Action: s3:GetObject
+            Resource: !Sub '${PageBucket.Arn}/*'
+            Condition:
+              StringEquals:
+                AWS:SourceArn: !Sub 'arn:aws:cloudfront::${AWS::AccountId}:distribution/${Page}'
+
+  # An email when the whole account's bill for the month passes 5 dollars, and again at 10.
+  Spending:
+    Type: AWS::Budgets::Budget
+    Condition: HasAlertEmail
+    Properties:
+      Budget:
+        BudgetName: !Sub '${AWS::StackName}-monthly'
+        BudgetType: COST
+        TimeUnit: MONTHLY
+        BudgetLimit: { Amount: 10, Unit: USD }
+      NotificationsWithSubscribers:
+        - Notification: { NotificationType: ACTUAL, ComparisonOperator: GREATER_THAN, Threshold: 50, ThresholdType: PERCENTAGE }
+          Subscribers: [{ SubscriptionType: EMAIL, Address: !Ref AlertEmail }]
+        - Notification: { NotificationType: ACTUAL, ComparisonOperator: GREATER_THAN, Threshold: 100, ThresholdType: PERCENTAGE }
+          Subscribers: [{ SubscriptionType: EMAIL, Address: !Ref AlertEmail }]
+
+Outputs:
+  ApiUrl:
+    Value: !Sub 'https://${Api}.execute-api.${AWS::Region}.amazonaws.com'
+  PageUrl:
+    Value: !Sub 'https://${Page.DomainName}'
+  PageBucketName:
+    Value: !Ref PageBucket

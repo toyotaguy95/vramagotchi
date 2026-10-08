@@ -1,0 +1,216 @@
+<title>VRAMagotchi Board</title>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Pixelify+Sans:wght@500;700&family=IBM+Plex+Mono:wght@400;500;600&display=swap">
+<style>
+  /* Layout: one narrow column, like a terminal window. A podium for the top three, then a plain ranked list.
+     Every colour comes from the pet's own sprite palette, so the page and the pets are one world. One look, dark. */
+  :root {
+    color-scheme: dark;
+    --ink: #1b1626;        /* the sprite's eye colour, darkened: the ground */
+    --panel: #251e35;
+    --line: #3b3252;
+    --cream: #ffeedc;      /* the pet's belly: text */
+    --dim: #a89db8;
+    --pet: #e28864;        /* the pet's coat: the accent */
+    --gold: #ffd60a;       /* a token particle: first place only */
+    --teal: #40e0d0;
+    --pink: #ff96a0;
+    --display: "Pixelify Sans", "Courier New", monospace;
+    --mono: "IBM Plex Mono", ui-monospace, "SFMono-Regular", Menlo, Consolas, monospace;
+  }
+  * { box-sizing: border-box; }
+  body { background: var(--ink); color: var(--cream); font: 400 15px/1.55 var(--mono); }
+  .page { max-width: 760px; margin: 0 auto; padding-inline: 16px; padding-block: 36px 56px; display: flex; flex-direction: column; gap: 36px; }
+  a { color: var(--pet); }
+  :focus-visible { outline: 2px solid var(--teal); outline-offset: 2px; }
+  canvas { image-rendering: pixelated; display: block; }
+
+  header { display: flex; flex-direction: column; gap: 10px; }
+  h1 { font: 700 clamp(34px, 9vw, 54px)/1 var(--display); margin: 0; letter-spacing: 0.01em; text-wrap: balance; }
+  h1 span { color: var(--pet); }
+  .lede { color: var(--dim); max-width: 56ch; margin: 0; }
+  .note { border: 1px dashed var(--line); color: var(--dim); padding: 8px 12px; font-size: 13px; }
+  .note b { color: var(--gold); font-weight: 600; }
+
+  h2 { font: 700 22px/1.2 var(--display); margin: 0 0 14px; color: var(--cream); }
+
+  /* the podium */
+  .podium { display: grid; grid-template-columns: 1fr 1.25fr 1fr; gap: 10px; align-items: end; }
+  .stand { display: flex; flex-direction: column; align-items: center; gap: 6px; min-width: 0; text-align: center; }
+  .stand canvas { width: min(100%, calc(var(--zoom) * 20px)); height: auto; aspect-ratio: 20 / 12; }
+  .stand .name { font: 700 20px/1.1 var(--display); overflow-wrap: anywhere; }
+  .stand .score { font-variant-numeric: tabular-nums; }
+  .stand .sub { color: var(--dim); font-size: 12px; }
+  .block { width: 100%; background: var(--panel); border-top: 3px solid var(--line); display: grid; place-items: center; font: 700 26px/1 var(--display); color: var(--dim); }
+  .first { --zoom: 9; } .first .block { height: 92px; border-color: var(--gold); color: var(--gold); }
+  .second { --zoom: 7; } .second .block { height: 64px; }
+  .third { --zoom: 7; } .third .block { height: 44px; }
+  .first .name { color: var(--gold); }
+
+  /* the list */
+  .rows { list-style: none; margin: 0; padding: 0; border-top: 1px solid var(--line); }
+  .row { display: grid; grid-template-columns: 3ch 60px minmax(0, 1fr) auto; gap: 12px; align-items: center; padding: 8px 2px; border-bottom: 1px solid var(--line); }
+  .row .rank { color: var(--dim); text-align: right; font-variant-numeric: tabular-nums; }
+  .row canvas { width: 60px; height: 36px; }
+  .row .who { min-width: 0; }
+  .row .name { font-weight: 600; overflow-wrap: anywhere; }
+  .row .sub { color: var(--dim); font-size: 12px; }
+  .row .score { text-align: right; font-variant-numeric: tabular-nums; white-space: nowrap; }
+  .row .score small { display: block; color: var(--dim); font-size: 12px; }
+  .stage { color: var(--teal); }
+  .shiny { color: var(--pink); }
+  .empty { color: var(--dim); padding: 18px 2px; border-bottom: 1px solid var(--line); }
+
+  /* get a pet */
+  .get { display: flex; flex-direction: column; gap: 10px; }
+  .cmd { display: flex; gap: 8px; align-items: stretch; flex-wrap: wrap; }
+  .cmd code { flex: 1 1 260px; min-width: 0; background: var(--panel); border: 1px solid var(--line); padding: 10px 12px; overflow-x: auto; white-space: nowrap; font: 500 13px/1.5 var(--mono); color: var(--cream); }
+  button { font: 600 13px/1 var(--mono); color: var(--ink); background: var(--pet); border: 0; padding: 0 16px; min-height: 40px; cursor: pointer; }
+  button:hover { background: var(--cream); }
+  .get p, .rules p { margin: 0; color: var(--dim); max-width: 62ch; }
+  .rules ul { margin: 0; padding-left: 20px; color: var(--dim); display: flex; flex-direction: column; gap: 6px; max-width: 62ch; }
+  .rules li::marker { color: var(--pet); }
+  .rules b { color: var(--cream); font-weight: 600; }
+  footer { color: var(--dim); font-size: 12px; border-top: 1px solid var(--line); padding-top: 14px; }
+</style>
+
+<div class="page">
+  <header>
+    <h1>VRAMa<span>gotchi</span> Board</h1>
+    <p class="lede">Pets that live in Claude Code and eat the tokens it writes. These are the best fed.</p>
+    <p class="note" id="note" hidden><b>Example pets.</b> The board is not open yet, so these ten are made up to show how it will look.</p>
+  </header>
+
+  <section aria-label="Top three">
+    <div class="podium" id="podium"></div>
+  </section>
+
+  <section>
+    <h2 id="rest-title">The rest of the board</h2>
+    <ol class="rows" id="rows"></ol>
+  </section>
+
+  <section class="get">
+    <h2>Get a pet</h2>
+    <p>Type this inside Claude Code. You get an egg, and your next prompt hatches it.</p>
+    <div class="cmd"><code id="install">/plugin install vramagotchi --marketplace toyotaguy95/vramagotchi</code><button type="button" data-copy="install">Copy</button></div>
+    <p>Then put it on this board. Nothing is sent until you do this.</p>
+    <div class="cmd"><code id="join">/pet board join</code><button type="button" data-copy="join">Copy</button></div>
+  </section>
+
+  <section class="rules">
+    <h2>How the board counts</h2>
+    <ul>
+      <li><b>A belly holds one day of food.</b> A pet's score grows by at most 1M tokens a day, however much it claims to have eaten.</li>
+      <li><b>The board keeps its own count.</b> Days fed and streaks run on the board's clock, so they cannot be made up.</li>
+      <li><b>Ties go to whoever joined first.</b> Feeding your pet every day beats everything else.</li>
+      <li><b>First place wears the crown.</b> That is the whole prize. There is nothing here worth money.</li>
+      <li><b>What a pet sends:</b> its name, how much it ate, and what it owns. Never your code or your prompts.</li>
+    </ul>
+  </section>
+
+  <footer>VRAMagotchi is open source: <a href="https://github.com/toyotaguy95/vramagotchi">github.com/toyotaguy95/vramagotchi</a></footer>
+</div>
+
+<script>
+// ART-START (written by claude-plugin/build.py)
+const ART = {"colors": {"O": [112, 58, 44], "B": [226, 136, 100], "L": [255, 238, 220], "E": [38, 30, 52], "W": [255, 255, 255], "P": [255, 150, 160], "M": [120, 30, 54], "T": [246, 122, 142], "y": [255, 214, 10], "c": [64, 224, 208], "v": [170, 130, 255], "Z": [170, 205, 255], "G": [176, 176, 190], "g": [96, 96, 112], "S": [130, 205, 255], "D": [176, 74, 58], "j": [110, 200, 90], "F": [255, 120, 40], "R": [226, 60, 70], "K": [60, 60, 76]}, "coats": {"fainted": {"B": [176, 176, 190], "O": [96, 96, 112], "L": [214, 214, 224], "P": [176, 176, 190], "D": [140, 140, 156]}, "shiny": {"B": [112, 196, 255], "O": [40, 70, 140], "D": [70, 120, 220], "P": [255, 170, 210]}, "legend": {"L": [255, 232, 150], "D": [255, 196, 40]}}, "bodies": {"baby": {"face": 5, "lift": 1, "coat": null, "art": ["....................", "....................", ".........O..........", "....OOOOOOOOOOOO....", "...OBBBBBBBBBBBBO...", "..OBBBBBBBBBBBBBBO..", "..OBBBBBBBBBBBBBBO..", "..OBBBBBBBBBBBBBBO..", "..OBBBBBBBBBBBBBBO..", "...OBBLLLLLLLLBBO...", "....OOOOOOOOOOOO....", "...................."]}, "kid": {"face": 4, "lift": 0, "coat": null, "art": ["....OO........OO....", "...OBBO......OBBO...", "...OBBBOOOOOOBBBO...", "..OBBBBBBBBBBBBBBO..", "..OBBBBBBBBBBBBBBO..", "..OBBBBBBBBBBBBBBO..", "..OBBBBBBBBBBBBBBO..", "..OBBBBBBBBBBBBBBO..", "..OBBBLLLLLLLLBBBO..", "...OBBLLLLLLLLBBO...", "...OOBBBBBBBBBBOO...", "....OO.OOOOOO.OO...."]}, "teen": {"face": 4, "lift": 0, "coat": null, "art": ["..O..............O..", "..OBO..........OBO..", "..OBBOOOOOOOOOOBBO..", "..OBBBBBBBBBBBBBBO..", "..OBBBBBBBBBBBBBBO..", "..OBBBBBBBBBBBBBBO.L", "..OBBBBBBBBBBBBBBO.O", "..OBBBBBBBBBBBBBBO.O", "..OBBBLLLLLLLLBBBO.O", "...OBBLLLLLLLLBBOOO.", "...OOBBBBBBBBBBOO...", "....OO.OOOOOO.OO...."]}, "adult": {"face": 4, "lift": 0, "coat": null, "art": ["...L............L...", "...LL..........LL...", "...OLOOOOOOOOOOLO...", "D.OBBBBBBBBBBBBBBO.D", "DDOBBBBBBBBBBBBBBODD", "DDOBBBBBBBBBBBBBBODD", ".DOBBBBBBBBBBBBBBOD.", "..OBBBBBBBBBBBBBBO..", "..OBBBLLLLLLLLBBBO.D", "...OBBLLLLLLLLBBOOD.", "...OOBBBBBBBBBBOO...", "....OO.OOOOOO.OO...."]}, "legend": {"face": 4, "lift": 0, "coat": "legend", "art": ["...L............L...", "...LL..........LL...", "...OLOOOOOOOOOOLO...", "D.OBBBBBBBBBBBBBBO.D", "DDOBBBBBBBBBBBBBBODD", "DDOBBBBBBBBBBBBBBODD", ".DOBBBBBBBBBBBBBBOD.", "..OBBBBBBBBBBBBBBO..", "..OBBBLLLLLLLLBBBO.D", "...OBBLLLLLLLLBBOOD.", "...OOBBBBBBBBBBOO...", "....OO.OOOOOO.OO...."]}}, "faces": {"open": ["BBWWEBBBBWWEBB", "BBWEEBBBBWEEBB", "BPEEEBMMBEEEPB"], "blink": ["BBBBBBBBBBBBBB", "BBEEEBBBBEEEBB", "BPBBBBMMBBBBPB"], "happy": ["BBBEBBBBBBEBBB", "BBEBEBBBBEBEBB", "BPBBBMMMMBBBPB", "BBBBBMTTMBBBBB"], "chew": ["BBWWEBBBBWWEBB", "BBWEEBBBBWEEBB", "BPEEEMMMMEEEPB"], "asleep": ["BBBBBBBBBBBBBB", "BBEBEBBBBEBEBB", "BPBEBBMMBBEBPB"], "full": ["BBWWEBBBBWWEBB", "BBWEEBBBBWEEBB", "BPEEEMMMMEEEPB", "BBLLLLLLLLLLBB"], "out": ["BBEBEBBBBEBEBB", "BBBEBBBBBBEBBB", "BBEBEBMMBEBEBB", "BBBBBBTTBBBBBB"]}, "floats": {"tokensA": ["....................", "....................", "....................", "....................", "y..................c", "....................", ".c................v.", "....................", "v..................y"], "tokensB": ["....................", "....................", "....................", "....................", "...................v", "c...................", "..................y.", ".y..................", "..................c."], "zzzA": [".................ZZZ", "..................Z.", ".................ZZZ"], "zzzB": ["....................", "..................ZZ", "..................ZZ"], "sweat": ["....................", "....................", "....................", "...................S", "...................S"], "sparkA": ["y..................W", "....................", "....................", "....................", "....................", "....................", "....................", "....................", "....................", "....................", "....................", "W..................y"], "sparkB": ["....................", ".W................y.", "....................", "....................", "....................", "....................", "....................", "....................", "....................", "....................", ".y................W."], "heartsA": ["R.R..............R.R", "RRR..............RRR", ".R................R."], "heartsB": ["....................", "R.R..............R.R", ".R................R."]}, "items": {"headphones": ["....................", ".......KKKKKK.......", "....................", "....................", ".KK..............KK.", ".Kc..............cK.", ".KK..............KK."], "wizard": [".........vv.........", "........vyvv........", "......vvvvvvvv......"], "crown": [".......y.yy.y.......", ".......yRyycy......."], "tophat": ["........KKKK........", "........RRRR........", "......KKKKKKKK......"], "bandage": ["....................", "....................", "....................", "...........WWW......", "...........WRW......"], "sweatband": ["....................", "....................", "....................", "...RRRRRRWWRRRRR...."], "bow": ["............R...R...", "............RRyRR...", "............R...R..."], "flower": ["....P...............", "...PyP..............", "....P..............."], "sprout": ["........jj.j........", ".........jj.........", ".........j.........."], "propeller": ["......cccKRRR.......", "........yyyy........", ".......RRRRRR......."], "halo": [".......yyyyyy.......", "...................."], "flame": ["..........F.........", ".........FyF........", "........FFyFF......."], "star": [".........yy.........", ".......yyWWyy.......", ".........yy........."], "champion": ["......y..yy..y......", "......yy.yy.yy......", "......yRyccyRy......"]}, "egg": [["....................", ".........OO.........", ".......OOLLOO.......", "......OLLLLLLO......", ".....OLLBBLLLLO.....", ".....OLLBBLLLBO.....", "....OLLLLLLLLLLO....", "....OLLLLLBBLLLO....", "....OLLBLLBBLLLO....", "....OLLLLLLLLLLO....", ".....OLLLLLLLLO.....", "......OOOOOOOO......"], ["....................", "..........OO........", "........OOLLOO......", ".......OLLLLLLO.....", "......OLLBBLLLLO....", "......OLLBBLLLBO....", ".....OLLLLLLLLLLO...", ".....OLLLLLBBLLLO...", ".....OLLBLLBBLLLO...", ".....OLLLLLLLLLLO...", "......OLLLLLLLLO....", ".......OOOOOOOO....."], ["....................", ".........OO.........", ".......OOLLOO.......", "......OLLLLLLO......", ".....OLLBBLLLLO.....", ".....OLLBBLLLBO.....", "....OLLLLLLLLLLO....", "....OLLLLLBBLLLO....", "....OLLBLLBBLLLO....", "....OLLLLLLLLLLO....", ".....OLLLLLLLLO.....", "......OOOOOOOO......"], ["....................", "........OO..........", "......OOLLOO........", ".....OLLLLLLO.......", "....OLLBBLLLLO......", "....OLLBBLLLBO......", "...OLLLLLLLLLLO.....", "...OLLLLLBBLLLO.....", "...OLLBLLBBLLLO.....", "...OLLLLLLLLLLO.....", "....OLLLLLLLLO......", ".....OOOOOOOO......."]], "cracked": [["....................", ".........OO.........", ".......OOLLOO.......", "......OLLLLLLO......", ".....OLLBBLLLLO.....", ".....OLOBLLOLBO.....", "....OOLOLOOLOLOO....", "....OLLOLLBBOLLO....", "....OLLBLLBBLLLO....", "....OLLLLLLLLLLO....", ".....OLLLLLLLLO.....", "......OOOOOOOO......"], ["....................", "..........OO........", "........OOLLOO......", ".......OLLLLLLO.....", "......OLLBBLLLLO....", "......OLOBLLOLBO....", ".....OOLOLOOLOLOO...", ".....OLLOLLBBOLLO...", ".....OLLBLLBBLLLO...", ".....OLLLLLLLLLLO...", "......OLLLLLLLLO....", ".......OOOOOOOO....."], ["....................", ".........OO.........", ".......OOLLOO.......", "......OLLLLLLO......", ".....OLLBBLLLLO.....", ".....OLOBLLOLBO.....", "....OOLOLOOLOLOO....", "....OLLOLLBBOLLO....", "....OLLBLLBBLLLO....", "....OLLLLLLLLLLO....", ".....OLLLLLLLLO.....", "......OOOOOOOO......"], ["....................", "........OO..........", "......OOLLOO........", ".....OLLLLLLO.......", "....OLLBBLLLLO......", "....OLOBLLOLBO......", "...OOLOLOOLOLOO.....", "...OLLOLLBBOLLO.....", "...OLLBLLBBLLLO.....", "...OLLLLLLLLLLO.....", "....OLLLLLLLLO......", ".....OOOOOOOO......."]]}
+// ART-END
+
+const API = ''   // the board's address; left empty, the page shows example pets
+
+const EXAMPLES = [
+  ['Mochi', 31_400_000, 'star', false, 41, 44], ['Gizmo', 27_900_000, 'tophat', true, 38, 41], ['Noodle', 12_250_000, 'crown', false, 19, 33],
+  ['Biscuit', 6_800_000, 'halo', false, 12, 20], ['Tofu', 2_610_000, 'wizard', false, 9, 11], ['Pixel', 1_480_000, 'propeller', true, 7, 9],
+  ['Waffle', 912_000, 'flame', false, 8, 8], ['Bean', 233_000, 'headphones', false, 3, 5], ['Pickle', 61_500, 'flower', false, 2, 2], ['Nugget', 4_200, null, false, 1, 1],
+]
+const STAGES = [['baby', 0], ['kid', 25e3], ['teen', 250e3], ['adult', 2.5e6], ['legend', 25e6]]
+
+const human = n => n >= 1e6 ? `${+(n / 1e6).toFixed(1)}M` : n >= 1e3 ? `${+(n / 1e3).toFixed(1)}k` : `${Math.round(n)}`
+const stageOf = score => STAGES.filter(([, at]) => score >= at).pop()[0]
+
+/* Draws one pet onto a 20 x 12 canvas, the same way the plugin builds it: body, face, what it wears, what floats. */
+function draw(canvas, pet, frame) {
+  const body = ART.bodies[pet.stage]
+  if (!body) return
+  const px = body.art.map(row => [...row])
+  const stamp = (art, top, left, solid) => (art || []).forEach((line, dy) => [...line].forEach((ch, dx) => {
+    if (px[top + dy] && (solid || ch !== '.')) px[top + dy][left + dx] = ch
+  }))
+  const first = pet.rank === 1
+  stamp(ART.faces[first ? 'happy' : frame % 6 === 5 ? 'blink' : 'open'], body.face, 3, true)
+  const wearing = first ? 'champion' : pet.wearing
+  stamp(wearing && ART.items[wearing], body.lift, 0, false)
+  if (first || ((pet.shiny || pet.stage === 'legend') && frame % 6 < 2)) stamp(ART.floats[frame % 2 ? 'sparkB' : 'sparkA'], 0, 0, false)
+  const palette = Object.assign({}, ART.colors, ART.coats[body.coat] || {}, pet.shiny ? ART.coats.shiny : {})
+  const g = canvas.getContext('2d')
+  g.clearRect(0, 0, 20, 12)
+  px.forEach((row, y) => row.forEach((ch, x) => {
+    const c = palette[ch]
+    if (c) { g.fillStyle = `rgb(${c[0]},${c[1]},${c[2]})`; g.fillRect(x, y, 1, 1) }
+  }))
+}
+
+const el = (tag, cls, text) => {
+  const node = document.createElement(tag)
+  if (cls) node.className = cls
+  if (text !== undefined) node.textContent = text     // names come from strangers: always as text, never as HTML
+  return node
+}
+const sprite = pet => { const c = el('canvas'); c.width = 20; c.height = 12; c.pet = pet; c.setAttribute('role', 'img'); c.setAttribute('aria-label', `${pet.name}, a ${pet.stage}`); return c }
+const facts = pet => `fed ${pet.days} day${pet.days === 1 ? '' : 's'}` + (pet.streak > 1 ? ` · ${pet.streak}-day streak` : '')
+
+function show(pets) {
+  const podium = document.getElementById('podium'), rows = document.getElementById('rows')
+  podium.replaceChildren(); rows.replaceChildren()
+  const places = [[pets[1], 'second'], [pets[0], 'first'], [pets[2], 'third']]     // second, first, third: the way a podium stands
+  for (const [pet, cls] of places) {
+    const stand = el('div', `stand ${cls}`)
+    if (pet) {
+      const name = el('div', 'name', pet.name)
+      if (pet.shiny) name.append(el('span', 'shiny', ' ✦'))
+      const sub = el('div', 'sub'); sub.append(el('span', 'stage', pet.stage), ` · ${facts(pet)}`)
+      stand.append(sprite(pet), name, el('div', 'score', `${human(pet.score)} tokens`), sub)
+    }
+    stand.append(el('div', 'block', pet ? String(pet.rank) : ''))
+    podium.append(stand)
+  }
+  for (const pet of pets.slice(3)) {
+    const row = el('li', 'row'), who = el('div', 'who'), name = el('div', 'name', pet.name), score = el('div', 'score', human(pet.score))
+    if (pet.shiny) name.append(el('span', 'shiny', ' ✦'))
+    const sub = el('div', 'sub'); sub.append(el('span', 'stage', pet.stage), ` · ${facts(pet)}`)
+    who.append(name, sub); score.append(el('small', '', 'tokens'))
+    row.append(el('div', 'rank', String(pet.rank)), sprite(pet), who, score)
+    rows.append(row)
+  }
+  if (pets.length === 0) podium.replaceWith(el('p', 'empty', 'No pets yet. Yours could be first.'))
+  if (pets.length <= 3) rows.append(el('li', 'empty', pets.length ? 'Nobody else yet.' : 'Install the pet below and join.'))
+  paint()
+}
+
+let frame = 0
+const paint = () => document.querySelectorAll('canvas').forEach(c => draw(c, c.pet, frame))
+if (!matchMedia('(prefers-reduced-motion: reduce)').matches) setInterval(() => { frame++; paint() }, 600)
+
+async function load() {
+  if (!API) {
+    document.getElementById('note').hidden = false
+    return show(EXAMPLES.map(([name, score, wearing, shiny, streak, days], i) => ({ rank: i + 1, name, score, stage: stageOf(score), wearing, shiny, streak, days })))
+  }
+  try {
+    const answer = await fetch(`${API}/board`)
+    show((await answer.json()).pets)
+  } catch {
+    document.getElementById('rows').replaceChildren(el('li', 'empty', 'The board could not be reached. Try again in a minute.'))
+  }
+}
+
+document.querySelectorAll('[data-copy]').forEach(button => button.addEventListener('click', async () => {
+  const code = document.getElementById(button.dataset.copy)
+  try { await navigator.clipboard.writeText(code.textContent); button.textContent = 'Copied' }
+  catch { getSelection().selectAllChildren(code); button.textContent = 'Selected' }
+  setTimeout(() => { button.textContent = 'Copy' }, 1600)
+}))
+
+load()
+if (API) setInterval(load, 60_000)
+</script>

@@ -281,6 +281,12 @@ ITEMS = {
 .......yyWWyy.......
 .........yy.........
 """,
+    # Not something to collect: only the pet in first place on the leaderboard wears it.
+    "champion": """
+......y..yy..y......
+......yy.yy.yy......
+......yRyccyRy......
+""",
 }
 
 EGG = """
@@ -400,10 +406,13 @@ def sheet(art, path):
 
 if __name__ == "__main__":
     art = parts()
-    target = Path(__file__).resolve().parent / "vramagotchi" / "hooks" / "register.tsx"
-    source = target.read_text()
-    start, end = source.index("// ART-START"), source.index("// ART-END")
-    target.write_text(source[:start] + "// ART-START (written by claude-plugin/build.py)\nconst ART: Art = " + json.dumps(art) + "\n" + source[end:])
+    here = Path(__file__).resolve().parent
+    # The plugin draws the pets, and so does the leaderboard's web page: both get the same parts.
+    for target, declare in ((here / "vramagotchi" / "hooks" / "register.tsx", "const ART: Art = "),
+                            (here.parent / "leaderboard" / "web" / "index.html", "const ART = ")):
+        source = target.read_text()
+        start, end = source.index("// ART-START"), source.index("// ART-END")
+        target.write_text(source[:start] + "// ART-START (written by claude-plugin/build.py)\n" + declare + json.dumps(art) + "\n" + source[end:])
     print("parts written:", {k: len(v) for k, v in art.items()})
     if len(sys.argv) > 1:
         sheet(art, sys.argv[1])
