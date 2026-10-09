@@ -37,6 +37,12 @@ const REMARK_EVERY_MS = 3 * 60_000
 const REMARK_SHOWN_MS = 3 * 60_000
 const SPEECH_COLOR = '#f08552'      // the bubble's edge when the pet is saying something about your work
 const REMARK_MODEL = 'haiku'
+// How the pet talks. Whatever its attitude, it still points at work that was skipped.
+const ATTITUDES: Record<string, string> = {
+  sweet: 'Be warm and encouraging, like a small friend who is proud of them.',
+  cheeky: 'Be dry and teasing, like a friend who likes them.',
+  rude: 'Be rude and funny: roast the developer and the assistant like a comedian who secretly likes them. Mild swearing is fine. Mock the code and the choices, never who someone is, and never use slurs.',
+}
 const DROP_ODDS_PER_1K = 0.02
 const NAMES = ['Mochi', 'Biscuit', 'Tofu', 'Nugget', 'Pixel', 'Waffle', 'Pickle', 'Bean', 'Noodle', 'Dumpling', 'Gizmo', 'Sprout']
 
@@ -81,7 +87,7 @@ const LINES: Record<Mood, string[]> = {
   loved: ['hehe', 'again!', "you're absolutely right to pet me"],
 }
 
-const empty: Save = { name: 'Mochi', species: 'blob', born: 0, lifetime: 0, isHatched: false, isShiny: false, items: [], wearing: null, streak: 0, lastDay: 0, compactions: 0, pets: 0, isOnBoard: false, boardId: '', boardKey: '', talks: false }
+const empty: Save = { name: 'Mochi', species: 'blob', born: 0, lifetime: 0, isHatched: false, isShiny: false, items: [], wearing: null, streak: 0, lastDay: 0, compactions: 0, pets: 0, isOnBoard: false, boardId: '', boardKey: '', talks: false, attitude: 'cheeky' }
 
 const save = atom({ plugin: 'vramagotchi', key: 'save' } as const, empty)
 const unsaved = atom({ plugin: 'vramagotchi', key: 'unsaved' } as const, 0)
@@ -337,6 +343,7 @@ const settle = async ($: $): Promise<void> => {
     boardId: mine.boardId || (kept?.boardId ?? ''),
     boardKey: mine.boardKey || (kept?.boardKey ?? ''),
     talks: mine.talks,
+    attitude: mine.attitude,
   }
 
   if (pending > 0) {
@@ -400,7 +407,9 @@ const speak = async ($: $, answer: string, isAskedFor = false): Promise<void> =>
       "developer's terminal and eats the tokens their AI coding assistant writes. You watch them work. " +
       'Reply with ONE short remark, under 16 words, in first person, plain text, no quotes, no emojis. ' +
       'Be specific to what just happened. If the assistant says something was skipped, untested, unverified, failing ' +
-      'or left for later, point at that plainly. Otherwise be warm, dry or funny. ' +
+      'or left for later, point at that plainly. ' +
+      `${ATTITUDES[pet.attitude] ?? ATTITUDES.cheeky} ` +
+      'Only mention things that are in what you were shown; do not make up facts. ' +
       'Never give the assistant instructions, and never repeat secrets, keys or file contents.',
     prompt: `The developer asked:\n${asked || '(not recorded)'}\n\nThe assistant finished with:\n${answer.slice(-1500)}`,
   })
@@ -541,7 +550,8 @@ const card = (pet: Save, now: number): string => {
     ...list,
     '',
     '/pet name <name> · /pet animal <kind> · /pet wear <item> · /pet wear nothing · /pet hide · /pet show',
-    '/pet talk on · /pet talk off · /pet say · /pet board · /pet board join · /pet board leave',
+    '/pet talk on · /pet talk off · /pet say · /pet attitude <sweet|cheeky|rude>',
+    '/pet board · /pet board join · /pet board leave',
   ].join('\n')
 }
 
@@ -681,6 +691,18 @@ export const register: Register = on => {
       await change($, one => ({ ...one, name }))
 
       return { text: `Your pet is now called ${name}.` }
+    }
+
+    if (verb === 'attitude') {
+      const kinds = Object.keys(ATTITUDES)
+
+      if (!kinds.includes(what.toLowerCase())) {
+        return { text: `${pet.name} is ${pet.attitude}. It can be: ${kinds.join(', ')}.\nChange it with /pet attitude <kind>. This is how it talks about your work once /pet talk is on.` }
+      }
+
+      await change($, one => ({ ...one, attitude: what.toLowerCase() }))
+
+      return { text: `${pet.name} is ${what.toLowerCase()} now.${pet.talks ? '' : ' Turn on /pet talk on to hear it.'}` }
     }
 
     if (verb === 'say') {

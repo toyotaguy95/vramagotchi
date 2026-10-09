@@ -68,6 +68,10 @@ point at anything skipped or untested:
 Each remark is one small request to the fast model on your own account, at most every three minutes. That
 uses a little of your usage, so it is off until you turn it on. `/pet say` makes it speak right now.
 
+Pick how it talks with `/pet attitude sweet`, `cheeky` or `rude`. Rude roasts your code:
+
+> Auth rewritten, tests unrun. Bold move. I'm a dragon and even I wouldn't gamble on login.
+
 ### It collects things
 
 ![The things a pet can wear](docs/collection.png)
@@ -100,6 +104,7 @@ from winning. It is not live yet.
 | `/pet wear <item>` · `/pet wear nothing` | dresses it |
 | `/pet talk on` · `/pet talk off` | whether it remarks on your work |
 | `/pet say` | makes it remark on the last turn now |
+| `/pet attitude <sweet, cheeky or rude>` | how it talks |
 | `/pet hide` · `/pet show` | hides it and brings it back |
 | `/pet board` · `/pet board join` · `/pet board leave` | the leaderboard, once it is open |
 
