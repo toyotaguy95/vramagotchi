@@ -5,7 +5,7 @@ A pet is put together from parts: a body for its stage of life, a face for its m
 and things floating around it. The plugin does the putting together while it runs; this file only holds
 the parts. Edit the pictures, then run from the repository root:
 
-    python3 claude-plugin/build.py                 writes the parts into the plugin
+    python3 claude-plugin/build.py                 writes the parts into the plugin and the board page, and redraws docs/*.png
     python3 claude-plugin/build.py sheet.png       also saves a picture of every stage, mood and item
 """
 import json
@@ -508,6 +508,17 @@ def sheet(art, path):
     png(path, tiles, 10, zoom=6)
 
 
+def docs(art, folder):
+    """The pictures the README shows."""
+    folder.mkdir(exist_ok=True)
+    png(folder / "animals.png", [compose(art, name, "teen", "open") for name in art["species"]], 5, zoom=10)
+    png(folder / "growing.png", [compose(art, "duck", stage, "open") for stage in STAGES], 5, zoom=10)
+    png(folder / "collection.png", [compose(art, "blob", "kid", "open", item=name) for name in art["items"]], 7, zoom=8)
+    png(folder / "moods.png", [compose(art, "cat", "kid", "happy", floats=["tokensA"]), compose(art, "cat", "kid", "asleep", floats=["zzzA"]),
+                               compose(art, "cat", "kid", "full", floats=["sweat"]), compose(art, "cat", "kid", "out", coats=["fainted"]),
+                               compose(art, "cat", "kid", "happy", floats=["heartsA"])], 5, zoom=10)
+
+
 if __name__ == "__main__":
     art = parts()
     here = Path(__file__).resolve().parent
@@ -518,6 +529,7 @@ if __name__ == "__main__":
         start, end = source.index("// ART-START"), source.index("// ART-END")
         target.write_text(source[:start] + "// ART-START (written by claude-plugin/build.py)\n" + declare + json.dumps(art) + "\n" + source[end:])
     print("parts written:", {k: len(v) for k, v in art.items()})
+    docs(art, here.parent / "docs")
     if len(sys.argv) > 1:
         sheet(art, sys.argv[1])
         print("sheet saved:", sys.argv[1])
