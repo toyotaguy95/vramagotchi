@@ -84,6 +84,21 @@ Pick how it talks with `/pet attitude sweet`, `cheeky` or `roast`. Roast goes af
 
 Roast swears. It goes after the work, never after who someone is.
 
+### It has stats that come from how you work
+
+Five numbers from 0 to 100, shown on its card (`/pet`):
+
+| Stat | What raises it |
+|---|---|
+| debugging | tests that failed and then passed |
+| patience | long turns, and days fed in a row |
+| chaos | huge changes, failed commands, compactions |
+| wisdom | everything it has ever eaten |
+| snark | every remark it makes, faster on roast |
+
+Its strongest stat gives it a title (Bean the Chaotic), things of its own to say, and a lean in how it talks
+about your work. Stats are only for fun: they never change what it has eaten, how it grows, or the board.
+
 ### It collects things
 
 ![The things a pet can wear](docs/collection.png)

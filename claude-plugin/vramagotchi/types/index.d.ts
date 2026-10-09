@@ -29,6 +29,8 @@ export type Save = {
   attitude: string
   /** Its own personality: one sentence the model wrote for it, or the owner did. Empty until it first talks. */
   quirk: string
+  /** The stats that are kept. Each 0 to 100, raised by what happens while the owner works. (Wisdom is worked out from `lifetime`.) */
+  stats: Stats
   /** The longest run of shapes it has got right in the memory game. */
   bestMemory: number
   /** The most tokens it has caught in one catch game. */
@@ -37,6 +39,8 @@ export type Save = {
   chips: number
   bestChips: number
 }
+
+export type Stats = { debugging: number; patience: number; chaos: number; snark: number }
 
 /** The last thing the pet said about a turn: the line, until when it shows, and when it was asked for. */
 export type Remark = { text: string; until: number; at: number; problem: string }
@@ -101,6 +105,8 @@ declare module 'claude-code' {
       isNamed: boolean
       trouble: string
       turnLines: number
+      isFailing: boolean
+      turnFixes: number
       game: Game
       catching: Catch
       table: Blackjack

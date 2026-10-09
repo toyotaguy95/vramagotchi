@@ -69,6 +69,7 @@ test('an egg hatches on its first meal, then the pet earns things and survives a
 
   await $.session.compact({ trigger: 'manual', messages: [{ role: 'user', text: 'hello', toolUses: [], toolResults: [] }] } as never)
   expect((kept.pet as Save).items).toContain('bandage')
+  expect((kept.pet as Save).stats.chaos).toBe(3)      // a compaction is a little chaos
   expect(await (await $.ui.mount(BAND)).find({ type: 'Text', text: /context ░░░░░░ 4%/ })).toBeTruthy()
 })
 
@@ -170,7 +171,7 @@ test('the pet only remarks on a turn once its owner turns that on', async ($, on
   on('session.start', (_, e) => e as never)
   on('turn.start', (_, e) => e as never)
   on('prompt.submit', (_, e) => e as never)
-  on('tool.call', () => ({ result: {}, text: 'Tests: 3 failed, 12 passed', isError: true }) as never)
+  on('tool.call', (_, e) => ((e as unknown as { command: string }).command.includes('again') ? { result: {}, text: 'Tests: 15 passed' } : { result: {}, text: 'Tests: 3 failed, 12 passed', isError: true }) as never)
   on('turn.complete', () => ({ text: 'ok' }) as never)
   on('command.register', () => ({ value: undefined }) as never)
   on('ui.toast', () => ({ value: undefined }) as never)
@@ -228,6 +229,20 @@ test('the pet only remarks on a turn once its owner turns that on', async ($, on
   await turn()
   expect(remarks().length).toBe(4)
   expect(remarks()[3]?.prompt).toContain('Tests failed during this turn')
+
+  // Its stats grow out of what really happened: the failure was chaos, the fix is debugging, every remark is snark.
+  expect((kept.pet as Save).stats.debugging).toBe(0)
+  expect((kept.pet as Save).stats.chaos).toBeGreaterThan(0)
+  const fedBefore = (kept.pet as Save).lifetime
+  await $.turn.start({ turnId: 't3' } as never)
+  await $.tool.call({ tool: 'Bash', tool_use_id: 'b3', command: 'npm test again' } as never)
+  await turn()
+  expect((kept.pet as Save).stats.debugging).toBe(4)
+  expect((kept.pet as Save).stats.snark).toBeGreaterThan(3)
+  const sheet = String(((await $.command.run({ command: 'pet', args: '' } as never)) as { text?: string }).text)
+  expect(sheet).toMatch(/debugging\s+░{10} 4/)
+  expect(sheet).toMatch(/wisdom\s+[█░]{10} \d+/)
+  expect((kept.pet as Save).lifetime).toBe(fedBefore + 900)      // one turn's food and nothing more: stats never feed the pet
 
   await $.command.run({ command: 'pet', args: 'talk off' } as never)
   await clock.advance(4 * 60_000)

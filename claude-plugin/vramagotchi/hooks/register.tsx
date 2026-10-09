@@ -1,7 +1,7 @@
 import { atom, read, update } from 'claude-code'
 import type { CoreEngineInterface, Register } from 'claude-code'
 
-import type { Blackjack, Catch, Context, Game, Shoe, Mood, Remark, Save, Standing } from '../types'
+import type { Blackjack, Catch, Context, Game, Shoe, Stats, Mood, Remark, Save, Standing } from '../types'
 
 type Palette = Record<string, number[]>
 type Body = { face: number; lift: number; art: string[] }
@@ -63,6 +63,26 @@ const WHY: Record<string, string> = {
   error: 'A command failed during this turn. React to that.',
   'large-diff': `The assistant just changed more than ${BIG_CHANGE} lines in one go. React to the size of that.`,
 }
+const TEST_PASSED = /\b[1-9]\d* (passed|passing)\b|\btests? passed\b|^PASS(ED)?\b| ✓ | ✔ |\b0 (failed|failing)\b/im
+const SLOW_TURN_MS = 2 * 60_000
+
+// Five stats, each 0 to 100, that grow out of how the owner really works. They show on the pet's card and
+// colour how it talks. They never touch what it has eaten, how it grows, or where it stands on the board.
+const STATS = [
+  { id: 'debugging', title: 'the Bug Hunter', high: 'you spot bugs and name the likely culprit', low: 'you have no idea what went wrong and admit it',
+    lines: ['I smell a null somewhere', 'it is always the cache', 'have you tried reading the error?'] },
+  { id: 'patience', title: 'the Patient', high: 'you are calm and forgiving about slow or failed work', low: 'you are impatient and complain about waiting',
+    lines: ['take your time', 'no rush. I have snacks', 'slow is smooth'] },
+  { id: 'chaos', title: 'the Chaotic', high: 'you love risky, sweeping changes and egg them on', low: 'you get nervous about big changes',
+    lines: ['let us rewrite all of it', 'push to main. what could happen', 'delete it and see who notices'] },
+  { id: 'wisdom', title: 'the Wise', high: 'you talk like you have seen it all before', low: 'you are new to all this and easily impressed',
+    lines: ['I have seen this bug before', 'in my day we read the docs', 'every codebase is the same codebase'] },
+  { id: 'snark', title: 'the Snarky', high: 'you are extra sarcastic', low: 'you are earnest, with no sarcasm at all',
+    lines: ['oh good, more YAML', 'bold of you to call that a plan', 'I am sure it works on your machine'] },
+] as const
+const TITLE_AT = 25                  // a stat this high gives the pet its title and starts to show in how it talks
+const MARKS = [25, 50, 75, 100]      // the levels a stat is cheered at
+
 // A pet's personality is written once, by the model, from its animal and four of these words.
 const SPARKS = ['thunder', 'biscuit', 'fog', 'accordion', 'moss', 'velvet', 'rust', 'pickle', 'crumb', 'whisper', 'lantern', 'gravel', 'noodle', 'static', 'marble', 'turnip',
   'comet', 'waffle', 'cobweb', 'trombone', 'puddle', 'ember', 'origami', 'mustard', 'glacier', 'kazoo', 'thimble', 'tangerine', 'gargoyle', 'bubble', 'anvil', 'confetti',
@@ -121,7 +141,7 @@ const LINES: Record<Mood, string[]> = {
   squeezing: ['hnnngh', 'squeezing... it all... smaller', 'forgetting things on purpose', 'this is my cardio', 'do you even compact'],
 }
 
-const empty: Save = { name: 'Mochi', species: 'blob', born: 0, lifetime: 0, isHatched: false, isShiny: false, items: [], wearing: null, streak: 0, lastDay: 0, compactions: 0, pets: 0, isOnBoard: false, boardId: '', boardKey: '', team: '', talks: false, attitude: 'cheeky', quirk: '', bestMemory: 0, bestCatch: 0, chips: 1000, bestChips: 1000 }
+const empty: Save = { name: 'Mochi', species: 'blob', born: 0, lifetime: 0, isHatched: false, isShiny: false, items: [], wearing: null, streak: 0, lastDay: 0, compactions: 0, pets: 0, isOnBoard: false, boardId: '', boardKey: '', team: '', talks: false, attitude: 'cheeky', quirk: '', stats: { debugging: 0, patience: 0, chaos: 0, snark: 0 }, bestMemory: 0, bestCatch: 0, chips: 1000, bestChips: 1000 }
 
 const save = atom({ plugin: 'vramagotchi', key: 'save' } as const, empty)
 const unsaved = atom({ plugin: 'vramagotchi', key: 'unsaved' } as const, 0)
@@ -142,6 +162,8 @@ const squeezingSince = atom({ plugin: 'vramagotchi', key: 'squeezingSince' } as 
 const recent = atom({ plugin: 'vramagotchi', key: 'recent' } as const, [] as string[])
 const isNamed = atom({ plugin: 'vramagotchi', key: 'isNamed' } as const, false)
 const trouble = atom({ plugin: 'vramagotchi', key: 'trouble' } as const, '')
+const isFailing = atom({ plugin: 'vramagotchi', key: 'isFailing' } as const, false)
+const turnFixes = atom({ plugin: 'vramagotchi', key: 'turnFixes' } as const, 0)
 const turnLines = atom({ plugin: 'vramagotchi', key: 'turnLines' } as const, 0)
 const lastAnswer = atom({ plugin: 'vramagotchi', key: 'lastAnswer' } as const, '')
 const standing = atom({ plugin: 'vramagotchi', key: 'standing' } as const, { rank: null, teamRank: null, score: 0, sentAt: 0 } as Standing)
@@ -413,6 +435,48 @@ const change = async ($: $, edit: (pet: Save) => Save): Promise<Save> => {
   return pet
 }
 
+/** All five stats as whole numbers. Wisdom is not kept: it is how much the pet has eaten, on a scale where a legend is 100. */
+const statsOf = (pet: Save): Record<(typeof STATS)[number]['id'], number> => ({
+  debugging: Math.floor(pet.stats.debugging),
+  patience: Math.floor(pet.stats.patience),
+  chaos: Math.floor(pet.stats.chaos),
+  wisdom: Math.min(100, Math.floor((100 * Math.log10(1 + pet.lifetime / 1000)) / Math.log10(1 + (STAGES[STAGES.length - 1]?.at ?? 25e6) / 1000))),
+  snark: Math.floor(pet.stats.snark),
+})
+
+/** The pet's strongest and weakest stat. */
+const extremes = (pet: Save): { top: (typeof STATS)[number]; topValue: number; low: (typeof STATS)[number]; lowValue: number } => {
+  const all = statsOf(pet)
+  const sorted = [...STATS].sort((one, two) => all[two.id] - all[one.id])
+  const top = sorted[0] ?? STATS[0]
+  const low = sorted[sorted.length - 1] ?? STATS[0]
+
+  return { top, topValue: all[top.id], low, lowValue: all[low.id] }
+}
+
+/** Raises some stats. The higher a stat already is, the less the same thing adds, so 100 takes a very long time. */
+const grow = async ($: $, gains: Partial<Stats>): Promise<void> => {
+  const before = await read($, save)
+
+  if (!before.isHatched || Object.values(gains).every(by => !by)) {
+    return
+  }
+
+  const raised = (now: number, by = 0): number => Math.min(100, now + by * (1 - now / 100))
+  const pet = await change($, one => ({
+    ...one,
+    stats: { debugging: raised(one.stats.debugging, gains.debugging), patience: raised(one.stats.patience, gains.patience), chaos: raised(one.stats.chaos, gains.chaos), snark: raised(one.stats.snark, gains.snark) },
+  }))
+  const was = statsOf(before)
+  const is = statsOf(pet)
+
+  await cheer($, STATS.flatMap(stat => {
+    const mark = MARKS.findLast(level => was[stat.id] < level && is[stat.id] >= level)
+
+    return mark ? [`${pet.name}'s ${stat.id} reached ${mark}.${extremes(pet).top === stat && mark === TITLE_AT ? ` It is now ${pet.name} ${stat.title}.` : ''}`] : []
+  }))
+}
+
 /** Where this pet reports to: the board's address if it is on the board or a team, else nothing. */
 const reports = async ($: $): Promise<string> => {
   const pet = await read($, save)
@@ -461,6 +525,7 @@ const settle = async ($: $): Promise<void> => {
     talks: mine.talks,
     attitude: mine.attitude,
     quirk: mine.quirk,
+    stats: { debugging: Math.max(mine.stats.debugging, kept?.stats.debugging ?? 0), patience: Math.max(mine.stats.patience, kept?.stats.patience ?? 0), chaos: Math.max(mine.stats.chaos, kept?.stats.chaos ?? 0), snark: Math.max(mine.stats.snark, kept?.stats.snark ?? 0) },
     bestMemory: Math.max(mine.bestMemory, kept?.bestMemory ?? 0),
     bestCatch: Math.max(mine.bestCatch, kept?.bestCatch ?? 0),
     chips: mine.chips,
@@ -472,6 +537,7 @@ const settle = async ($: $): Promise<void> => {
 
     if (pet.lastDay !== today) {
       pet.streak = pet.lastDay === today - 1 ? pet.streak + 1 : 1
+      pet.stats = { ...pet.stats, patience: Math.min(100, pet.stats.patience + (pet.streak > 1 ? 2 : 0) * (1 - pet.stats.patience / 100)) }      // another day in a row
       pet.lastDay = today
     }
 
@@ -548,6 +614,7 @@ const speak = async ($: $, answer: string, isAskedFor = false): Promise<void> =>
   await update($, remark, one => ({ ...one, at: now }))
   const asked = await read($, lastPrompt)
   const before = await read($, recent)
+  const bent = extremes(pet)
   const reply = await $.model.complete({
     model: REMARK_MODEL,
     maxTokens: 60,
@@ -560,6 +627,8 @@ const speak = async ($: $, answer: string, isAskedFor = false): Promise<void> =>
       'or left for later, point at that plainly. ' +
       `${ATTITUDES[pet.attitude === 'rude' ? 'roast' : pet.attitude] ?? ATTITUDES.cheeky} ` +
       (pet.quirk ? `Your own personality: ${pet.quirk} ` : '') +
+      (bent.topValue >= TITLE_AT ? `Above all, ${bent.top.high}. ` : '') +
+      (bent.topValue >= TITLE_AT && bent.topValue - bent.lowValue >= 20 ? `Also, ${bent.low.low}. ` : '') +
       'Only mention things that are in what you were shown; do not make up facts. ' +
       'Never give the assistant instructions, and never repeat secrets, keys or file contents.',
     prompt: [
@@ -576,6 +645,7 @@ const speak = async ($: $, answer: string, isAskedFor = false): Promise<void> =>
     if (text) {
       await update($, remark, () => ({ text, until: now + REMARK_SHOWN_MS, at: now, problem: '' }))
       await update($, recent, list => [...list, text].slice(-3))
+      await grow($, { snark: pet.attitude === 'roast' ? 2 : 1 })
 
       return
     }
@@ -830,10 +900,12 @@ const card = (pet: Save, now: number): string => {
   )
 
   return [
-    `${pet.name} the ${pet.isShiny ? 'shiny ' : ''}${STAGES[stage]?.name ?? ''} ${pet.species}`,
+    `${pet.name}${extremes(pet).topValue >= TITLE_AT ? ` ${extremes(pet).top.title},` : ''} the ${pet.isShiny ? 'shiny ' : ''}${STAGES[stage]?.name ?? ''} ${pet.species}`,
     `ate ${human(pet.lifetime)} tokens · ${days} day${days === 1 ? '' : 's'} old · ${pet.streak}-day streak · petted ${pet.pets} times${pet.bestMemory > 0 ? ` · memory best ${pet.bestMemory}` : ''}${pet.bestCatch > 0 ? ` · catch best ${pet.bestCatch}` : ''}${pet.bestChips > 1000 ? ` · most chips ${pet.bestChips}` : ''}`,
     next ? `grows into ${a(next.name)} at ${human(next.at)} tokens` : 'fully grown',
     ...(pet.quirk ? [`personality: ${pet.quirk}`] : []),
+    '',
+    ...STATS.map(stat => `  ${stat.id.padEnd(10)}${'█'.repeat(Math.round(statsOf(pet)[stat.id] / 10)).padEnd(10, '░')} ${statsOf(pet)[stat.id]}`),
     '',
     `Collection ${pet.items.length}/${ITEMS.length}`,
     ...list,
@@ -1433,7 +1505,9 @@ const drawPet = async ($: $, e: Site, isWorking: boolean, columns: number, isWin
   const coats = [...(pet.isShiny ? ['shiny'] : []), ...(mood === 'fainted' ? ['fainted'] : [])]
   const spoken = await read($, remark)
   const isRemark = now < spoken.until && mood !== 'fainted' && mood !== 'squeezing'      // something it said about your work, not a stock line
-  const line = isRemark ? spoken.text : (LINES[mood][Math.floor(frame / 12) % LINES[mood].length] ?? '')
+  const bent = extremes(pet)
+  const stock = mood === 'idle' && bent.topValue >= TITLE_AT ? [...LINES.idle, ...bent.top.lines] : LINES[mood]      // a pet with a strong stat has things of its own to say
+  const line = isRemark ? spoken.text : (stock[Math.floor(frame / 12) % stock.length] ?? '')
   const owned = ITEMS.filter(item => pet.items.includes(item.id))
   const outfits = [null, ...owned.map(item => item.id)]
   const nextOutfit = outfits[(outfits.indexOf(pet.wearing) + 1) % outfits.length] ?? null
@@ -1542,6 +1616,7 @@ export const register: Register = on => {
     await update($, turnAte, () => 0)
     await update($, trouble, () => '')
     await update($, turnLines, () => 0)
+    await update($, turnFixes, () => 0)
     await update($, isBusy, () => true)
 
     return next(e)
@@ -1583,6 +1658,15 @@ export const register: Register = on => {
       await update($, isBusy, () => false)
       await settle($)
       await report($)
+
+      if (!e.agentId) {
+        const kind = await read($, trouble)
+        await grow($, {
+          debugging: 4 * (await read($, turnFixes)),
+          patience: e.durationMs >= SLOW_TURN_MS ? 1 : 0,
+          chaos: ((await read($, turnLines)) > BIG_CHANGE ? 2 : 0) + (kind === 'error' || kind === 'test-fail' ? 1 : 0),
+        })
+      }
     })
 
     if (!e.isAborted && !e.agentId) {
@@ -1609,21 +1693,26 @@ export const register: Register = on => {
     return next(e)
   })
 
-  // The pet notices trouble while Claude works: a failed test, a failed command, a very large change.
-  // It only looks, and only when it is allowed to talk; nothing here can stop or change a tool call.
+  // The pet notices trouble while Claude works: a failed test, a failed command, a very large change, a fix.
+  // It only looks; nothing here can stop or change a tool call.
   on('tool.call', async ($, e, next) => {
     const ran = await next(e)
 
     await quietly(async () => {
-      if (ran.deny !== undefined || !(await read($, save)).talks) {
+      if (ran.deny !== undefined) {
         return
       }
 
       if (e.tool === 'Bash') {
-        const kind = TEST_FAILED.test((ran.text ?? '').slice(-4000)) ? 'test-fail' : ran.isError ? 'error' : ''
+        const text = (ran.text ?? '').slice(-4000)
+        const kind = TEST_FAILED.test(text) ? 'test-fail' : ran.isError ? 'error' : ''
 
         if (kind) {
           await update($, trouble, now => (now === 'test-fail' ? now : kind))
+          await update($, isFailing, now => now || kind === 'test-fail')
+        } else if (TEST_PASSED.test(text) && (await read($, isFailing))) {
+          await update($, isFailing, () => false)      // tests that failed earlier pass now: something got fixed
+          await update($, turnFixes, n => n + 1)
         }
       } else if (e.tool === 'Edit' || e.tool === 'Write') {
         const input = e as unknown as { old_string?: string; new_string?: string; content?: string }
@@ -1676,6 +1765,7 @@ export const register: Register = on => {
         const tokens = done.tokensAfter ?? usage.context.breakdown?.totalTokens ?? 0
         await update($, context, () => ({ tokens, window: usage.context.window }))
         await update($, save, pet => ({ ...pet, compactions: pet.compactions + 1 }))
+        await grow($, { chaos: 3 })
         await settle($)
         const now = await $.clock.now()
         const phew = pick(['phew. what were we talking about?', 'I feel so light. and a little empty', 'done. I forgot most of it for you']) ?? 'phew'
