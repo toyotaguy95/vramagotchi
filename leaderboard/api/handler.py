@@ -39,7 +39,8 @@ FIND_ODDS = 0.005             # the chance of a lucky find for each thousand tok
 LEGENDARY, RARE = 0.01, 0.12  # of those finds, one in a hundred is legendary (about once in 20M tokens) and one in eight is rare
 SHINY_ODDS = 1 / 50
 STREAK_FOR_FLAME = 7
-SPECIES = {"blob", "cat", "bunny", "duck", "cactus", "ghost", "robot", "mushroom", "axolotl", "dragon"}
+SPECIES = {"blob", "cat", "bunny", "duck", "cactus", "ghost", "robot", "mushroom", "axolotl", "dragon",
+           "goose", "octopus", "owl", "penguin", "turtle", "snail", "capybara", "chonk"}
 
 HEAD_START = 250_000          # the most a pet may bring with it when it joins
 BELLY = 1_000_000             # the most a pet can eat in one day; it empties at this pace too

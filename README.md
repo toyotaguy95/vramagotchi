@@ -3,7 +3,7 @@
 A pixel pet that eats tokens. It lives above your prompt in Claude Code (the terminal and the desktop app),
 or on your own GPU.
 
-![The ten animals a pet can be](docs/animals.png)
+![The eighteen animals a pet can be](docs/animals.png)
 
 **Miss `/buddy`?** This one is open source and saved on your own computer, so no update can take it away.
 And it grows.
@@ -41,8 +41,9 @@ context window fills, and faints when it runs out.
 
 ### It is your animal
 
-Ten to choose from: blob, cat, bunny, duck, cactus, ghost, robot, mushroom, axolotl and dragon. The egg picks
-one, and `/pet animal duck` changes it. `/pet name Wobbleaux` names it.
+Eighteen to choose from: blob, cat, bunny, duck, cactus, ghost, robot, mushroom, axolotl, dragon, goose,
+octopus, owl, penguin, turtle, snail, capybara and chonk. If you had a `/buddy`, its animal is here. The egg
+picks one, and `/pet animal duck` changes it. `/pet name Wobbleaux` names it.
 
 ### It grows up
 
@@ -68,6 +69,14 @@ point at anything skipped or untested:
 
 Each remark is one small request to the fast model on your own account, at most every three minutes. That
 uses a little of your usage, so it is off until you turn it on. `/pet say` makes it speak right now.
+
+It also notices things. When a test or a command fails, or Claude changes more than 80 lines in one go, it
+speaks up sooner. Use its name in a prompt ("what do you think, Bean?") and it answers. It remembers the last
+few things it said, so it does not repeat itself.
+
+Every pet gets a personality of its own the first time it talks: one odd sentence the model writes for it.
+`/pet personality` shows it, `/pet personality new` writes another, and `/pet personality <your own words>`
+sets it yourself.
 
 Pick how it talks with `/pet attitude sweet`, `cheeky` or `roast`. Roast goes after your code:
 
@@ -134,6 +143,7 @@ team's board or join it, and a pet can be on its team without being on the publi
 | `/pet talk on` · `/pet talk off` | whether it remarks on your work |
 | `/pet say` | makes it remark on the last turn now |
 | `/pet attitude <sweet, cheeky or roast>` | how it talks |
+| `/pet personality` · `/pet personality new` | its own quirk, written by the model |
 | `/pet hide` · `/pet show` | hides it and brings it back |
 | `/pet play memory` · `/pet play catch` · `/pet play blackjack` | starts a game |
 | `/pet play blackjack 50` · `/pet play shuffle` · `/pet play proof` | bets 50 chips; starts a new shoe; shows the last shoe's order |

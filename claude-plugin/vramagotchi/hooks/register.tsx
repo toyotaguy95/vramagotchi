@@ -55,6 +55,18 @@ const REMARK_EVERY_MS = 3 * 60_000
 const REMARK_SHOWN_MS = 3 * 60_000
 const SPEECH_COLOR = '#f08552'      // the bubble's edge when the pet is saying something about your work
 const REMARK_MODEL = 'haiku'
+const TROUBLE_EVERY_MS = 45_000      // after a failed test or command it may speak sooner than usual
+const BIG_CHANGE = 80                // lines changed in one turn that count as a lot
+const TEST_FAILED = /\b[1-9]\d* (failed|failing)\b|\btests? failed\b|^FAIL(ED)?\b| ✗ | ✘ /im
+const WHY: Record<string, string> = {
+  'test-fail': 'Tests failed during this turn. React to that.',
+  error: 'A command failed during this turn. React to that.',
+  'large-diff': `The assistant just changed more than ${BIG_CHANGE} lines in one go. React to the size of that.`,
+}
+// A pet's personality is written once, by the model, from its animal and four of these words.
+const SPARKS = ['thunder', 'biscuit', 'fog', 'accordion', 'moss', 'velvet', 'rust', 'pickle', 'crumb', 'whisper', 'lantern', 'gravel', 'noodle', 'static', 'marble', 'turnip',
+  'comet', 'waffle', 'cobweb', 'trombone', 'puddle', 'ember', 'origami', 'mustard', 'glacier', 'kazoo', 'thimble', 'tangerine', 'gargoyle', 'bubble', 'anvil', 'confetti',
+  'lighthouse', 'sock', 'drizzle', 'walnut', 'hammock', 'jellybean', 'compost', 'tuba']
 // How the pet talks. Whatever its attitude, it still points at work that was skipped.
 const ATTITUDES: Record<string, string> = {
   sweet: 'Be warm and encouraging, like a small friend who is proud of them.',
@@ -93,7 +105,7 @@ const ITEMS: Item[] = [
 ]
 
 // ART-START (written by claude-plugin/build.py)
-const ART: Art = {"colors": {"O": [112, 58, 44], "B": [226, 136, 100], "L": [255, 238, 220], "E": [38, 30, 52], "W": [255, 255, 255], "P": [255, 150, 160], "M": [120, 30, 54], "T": [246, 122, 142], "y": [255, 214, 10], "c": [64, 224, 208], "v": [170, 130, 255], "Z": [170, 205, 255], "G": [176, 176, 190], "g": [96, 96, 112], "S": [130, 205, 255], "D": [176, 74, 58], "j": [110, 200, 90], "F": [255, 120, 40], "R": [226, 60, 70], "K": [60, 60, 76]}, "coats": {"fainted": {"B": [176, 176, 190], "O": [96, 96, 112], "L": [214, 214, 224], "P": [176, 176, 190], "D": [140, 140, 156]}, "shiny": {"B": [112, 196, 255], "O": [40, 70, 140], "D": [70, 120, 220], "P": [255, 170, 210]}, "legend": {"L": [255, 232, 150], "D": [255, 196, 40]}}, "bodies": {"baby": {"face": 5, "lift": 1, "art": ["....................", "....................", ".........O..........", "....OOOOOOOOOOOO....", "...OBBBBBBBBBBBBO...", "..OBBBBBBBBBBBBBBO..", "..OBBBBBBBBBBBBBBO..", "..OBBBBBBBBBBBBBBO..", "..OBBBBBBBBBBBBBBO..", "...OBBLLLLLLLLBBO...", "....OOOOOOOOOOOO....", "...................."]}, "grown": {"face": 4, "lift": 0, "art": ["....................", "....................", "...OOOOOOOOOOOOOO...", "..OBBBBBBBBBBBBBBO..", "..OBBBBBBBBBBBBBBO..", "..OBBBBBBBBBBBBBBO..", "..OBBBBBBBBBBBBBBO..", "..OBBBBBBBBBBBBBBO..", "..OBBBLLLLLLLLBBBO..", "...OBBLLLLLLLLBBO...", "...OOBBBBBBBBBBOO...", "....OO.OOOOOO.OO...."]}}, "growth": {"teen": ["....................", "....................", "....................", "....................", "....................", "...................L", "...................O", "...................O", "...................O", ".................OO."], "adult": ["....................", "....................", "....................", "D..................D", "DD................DD", "DD................DD", ".D................D.", "....................", "...................D", "..................D."]}, "species": {"blob": {"coat": {}, "top": ["....OO........OO....", "...OBBO......OBBO...", "...OBBB......BBBO..."], "after": []}, "cat": {"coat": {"B": [178, 176, 200], "O": [78, 72, 104], "L": [242, 240, 250], "D": [120, 114, 156]}, "top": ["...O............O...", "...OBO........OBO...", "...OBPB......BPBO..."], "after": []}, "bunny": {"coat": {"B": [255, 232, 238], "O": [172, 108, 132], "L": [255, 255, 255], "D": [236, 150, 178]}, "top": ["....OBO......OBO....", "....OPO......OPO....", "....OPO......OPO...."], "after": []}, "duck": {"coat": {"B": [255, 216, 92], "O": [158, 104, 30], "L": [255, 244, 204], "D": [240, 160, 40]}, "top": ["..........O.........", ".........OBO........", ".........BBB........"], "after": ["....................", "....................", "....................", "....................", "....................", "....................", "........FFFF........", ".........FF........."]}, "cactus": {"coat": {"B": [122, 198, 106], "O": [44, 104, 62], "L": [192, 234, 162], "D": [70, 150, 80]}, "top": [".........PP.........", "........PyyP........", ".........PP........."], "after": ["....................", "....................", "....................", "......O......O......", "....................", "....................", "....................", "....................", "....O..........O...."]}, "ghost": {"coat": {"B": [238, 238, 250], "O": [128, 124, 168], "L": [255, 255, 255], "P": [255, 176, 196], "D": [190, 190, 232]}, "top": ["....................", "....................", "...................."], "after": ["....................", "....................", "....................", "....................", "....................", "....................", "....................", "....................", "....................", "..OBBBLLLLLLLLBBBO..", "..OBBOBBBOOBBBOBBO..", "..OO_O_OO__OO_O_OO.."]}, "robot": {"coat": {"B": [178, 190, 206], "O": [66, 76, 100], "L": [222, 232, 242], "P": [110, 215, 255], "D": [110, 124, 150]}, "top": [".........R..........", ".........g..........", "..OOOOOOOOOOOOOOOO.."], "after": ["....................", "....................", "....................", "....................", "....................", ".g................g."]}, "mushroom": {"coat": {"B": [248, 230, 205], "O": [122, 70, 62], "L": [255, 246, 232], "D": [226, 60, 70]}, "top": ["....OOOOOOOOOOOO....", "..OORRWWRRRRRWRROO..", ".ORRRWWRRRRWWRRRRRO.", ".OOOOOOOOOOOOOOOOOO."], "after": []}, "axolotl": {"coat": {"B": [255, 174, 194], "O": [176, 84, 122], "L": [255, 226, 234], "P": [255, 104, 150], "D": [240, 110, 160]}, "top": ["....................", "....................", "...................."], "after": ["....................", "....................", "....................", "PP................PP", ".P................P.", "PP................PP"]}, "dragon": {"coat": {"B": [120, 204, 156], "O": [40, 98, 92], "L": [232, 246, 204], "D": [60, 152, 132]}, "top": ["...L............L...", "...LL..........LL...", "...OL..........LO..."], "after": []}}, "faces": {"open": ["BBWWEBBBBWWEBB", "BBWEEBBBBWEEBB", "BPEEEBMMBEEEPB"], "blink": ["BBBBBBBBBBBBBB", "BBEEEBBBBEEEBB", "BPBBBBMMBBBBPB"], "happy": ["BBBEBBBBBBEBBB", "BBEBEBBBBEBEBB", "BPBBBMMMMBBBPB", "BBBBBMTTMBBBBB"], "chew": ["BBWWEBBBBWWEBB", "BBWEEBBBBWEEBB", "BPEEEMMMMEEEPB"], "asleep": ["BBBBBBBBBBBBBB", "BBEBEBBBBEBEBB", "BPBEBBMMBBEBPB"], "full": ["BBWWEBBBBWWEBB", "BBWEEBBBBWEEBB", "BPEEEMMMMEEEPB", "BBLLLLLLLLLLBB"], "out": ["BBEBEBBBBEBEBB", "BBBEBBBBBBEBBB", "BBEBEBMMBEBEBB", "BBBBBBTTBBBBBB"], "strain": ["BBEBBBBBBBBEBB", "BBBEBBBBBBEBBB", "BPEBBMMMMBBEPB", "BBBBBMWWMBBBBB"]}, "floats": {"tokensA": ["....................", "....................", "....................", "....................", "y..................c", "....................", ".c................v.", "....................", "v..................y"], "tokensB": ["....................", "....................", "....................", "....................", "...................v", "c...................", "..................y.", ".y..................", "..................c."], "zzzA": [".................ZZZ", "..................Z.", ".................ZZZ"], "zzzB": ["....................", "..................ZZ", "..................ZZ"], "sweat": ["....................", "....................", "....................", "...................S", "...................S"], "strainA": ["....................", "....................", "S..................S", "S...................", "...................S", "....................", ".S..................", "....................", "..................S."], "strainB": ["....................", ".S................S.", "....................", "...................S", "S...................", "....................", "..................S.", ".S.................."], "sparkA": ["y..................W", "....................", "....................", "....................", "....................", "....................", "....................", "....................", "....................", "....................", "....................", "W..................y"], "sparkB": ["....................", ".W................y.", "....................", "....................", "....................", "....................", "....................", "....................", "....................", "....................", ".y................W."], "heartsA": ["R.R..............R.R", "RRR..............RRR", ".R................R."], "heartsB": ["....................", "R.R..............R.R", ".R................R."]}, "items": {"headphones": ["....................", ".......KKKKKK.......", "....................", "....................", ".KK..............KK.", ".Kc..............cK.", ".KK..............KK."], "wizard": [".........vv.........", "........vyvv........", "......vvvvvvvv......"], "crown": [".......y.yy.y.......", ".......yRyycy......."], "tophat": ["........KKKK........", "........RRRR........", "......KKKKKKKK......"], "bandage": ["....................", "....................", "....................", "...........WWW......", "...........WRW......"], "sweatband": ["....................", "....................", "....................", "...RRRRRRWWRRRRR...."], "bow": ["............R...R...", "............RRyRR...", "............R...R..."], "flower": ["....P...............", "...PyP..............", "....P..............."], "sprout": ["........jj.j........", ".........jj.........", ".........j.........."], "propeller": ["......cccKRRR.......", "........yyyy........", ".......RRRRRR......."], "halo": [".......yyyyyy.......", "...................."], "flame": ["..........F.........", ".........FyF........", "........FFyFF......."], "star": [".........yy.........", ".......yyWWyy.......", ".........yy........."], "champion": ["......y..yy..y......", "......yy.yy.yy......", "......yRyccyRy......"]}, "egg": [["....................", ".........OO.........", ".......OOLLOO.......", "......OLLLLLLO......", ".....OLLBBLLLLO.....", ".....OLLBBLLLBO.....", "....OLLLLLLLLLLO....", "....OLLLLLBBLLLO....", "....OLLBLLBBLLLO....", "....OLLLLLLLLLLO....", ".....OLLLLLLLLO.....", "......OOOOOOOO......"], ["....................", "..........OO........", "........OOLLOO......", ".......OLLLLLLO.....", "......OLLBBLLLLO....", "......OLLBBLLLBO....", ".....OLLLLLLLLLLO...", ".....OLLLLLBBLLLO...", ".....OLLBLLBBLLLO...", ".....OLLLLLLLLLLO...", "......OLLLLLLLLO....", ".......OOOOOOOO....."], ["....................", ".........OO.........", ".......OOLLOO.......", "......OLLLLLLO......", ".....OLLBBLLLLO.....", ".....OLLBBLLLBO.....", "....OLLLLLLLLLLO....", "....OLLLLLBBLLLO....", "....OLLBLLBBLLLO....", "....OLLLLLLLLLLO....", ".....OLLLLLLLLO.....", "......OOOOOOOO......"], ["....................", "........OO..........", "......OOLLOO........", ".....OLLLLLLO.......", "....OLLBBLLLLO......", "....OLLBBLLLBO......", "...OLLLLLLLLLLO.....", "...OLLLLLBBLLLO.....", "...OLLBLLBBLLLO.....", "...OLLLLLLLLLLO.....", "....OLLLLLLLLO......", ".....OOOOOOOO......."]], "cracked": [["....................", ".........OO.........", ".......OOLLOO.......", "......OLLLLLLO......", ".....OLLBBLLLLO.....", ".....OLOBLLOLBO.....", "....OOLOLOOLOLOO....", "....OLLOLLBBOLLO....", "....OLLBLLBBLLLO....", "....OLLLLLLLLLLO....", ".....OLLLLLLLLO.....", "......OOOOOOOO......"], ["....................", "..........OO........", "........OOLLOO......", ".......OLLLLLLO.....", "......OLLBBLLLLO....", "......OLOBLLOLBO....", ".....OOLOLOOLOLOO...", ".....OLLOLLBBOLLO...", ".....OLLBLLBBLLLO...", ".....OLLLLLLLLLLO...", "......OLLLLLLLLO....", ".......OOOOOOOO....."], ["....................", ".........OO.........", ".......OOLLOO.......", "......OLLLLLLO......", ".....OLLBBLLLLO.....", ".....OLOBLLOLBO.....", "....OOLOLOOLOLOO....", "....OLLOLLBBOLLO....", "....OLLBLLBBLLLO....", "....OLLLLLLLLLLO....", ".....OLLLLLLLLO.....", "......OOOOOOOO......"], ["....................", "........OO..........", "......OOLLOO........", ".....OLLLLLLO.......", "....OLLBBLLLLO......", "....OLOBLLOLBO......", "...OOLOLOOLOLOO.....", "...OLLOLLBBOLLO.....", "...OLLBLLBBLLLO.....", "...OLLLLLLLLLLO.....", "....OLLLLLLLLO......", ".....OOOOOOOO......."]]}
+const ART: Art = {"colors": {"O": [112, 58, 44], "B": [226, 136, 100], "L": [255, 238, 220], "E": [38, 30, 52], "W": [255, 255, 255], "P": [255, 150, 160], "M": [120, 30, 54], "T": [246, 122, 142], "y": [255, 214, 10], "c": [64, 224, 208], "v": [170, 130, 255], "Z": [170, 205, 255], "G": [176, 176, 190], "g": [96, 96, 112], "S": [130, 205, 255], "D": [176, 74, 58], "j": [110, 200, 90], "F": [255, 120, 40], "R": [226, 60, 70], "K": [60, 60, 76]}, "coats": {"fainted": {"B": [176, 176, 190], "O": [96, 96, 112], "L": [214, 214, 224], "P": [176, 176, 190], "D": [140, 140, 156]}, "shiny": {"B": [112, 196, 255], "O": [40, 70, 140], "D": [70, 120, 220], "P": [255, 170, 210]}, "legend": {"L": [255, 232, 150], "D": [255, 196, 40]}}, "bodies": {"baby": {"face": 5, "lift": 1, "art": ["....................", "....................", ".........O..........", "....OOOOOOOOOOOO....", "...OBBBBBBBBBBBBO...", "..OBBBBBBBBBBBBBBO..", "..OBBBBBBBBBBBBBBO..", "..OBBBBBBBBBBBBBBO..", "..OBBBBBBBBBBBBBBO..", "...OBBLLLLLLLLBBO...", "....OOOOOOOOOOOO....", "...................."]}, "grown": {"face": 4, "lift": 0, "art": ["....................", "....................", "...OOOOOOOOOOOOOO...", "..OBBBBBBBBBBBBBBO..", "..OBBBBBBBBBBBBBBO..", "..OBBBBBBBBBBBBBBO..", "..OBBBBBBBBBBBBBBO..", "..OBBBBBBBBBBBBBBO..", "..OBBBLLLLLLLLBBBO..", "...OBBLLLLLLLLBBO...", "...OOBBBBBBBBBBOO...", "....OO.OOOOOO.OO...."]}}, "growth": {"teen": ["....................", "....................", "....................", "....................", "....................", "...................L", "...................O", "...................O", "...................O", ".................OO."], "adult": ["....................", "....................", "....................", "D..................D", "DD................DD", "DD................DD", ".D................D.", "....................", "...................D", "..................D."]}, "species": {"blob": {"coat": {}, "top": ["....OO........OO....", "...OBBO......OBBO...", "...OBBB......BBBO..."], "after": []}, "cat": {"coat": {"B": [178, 176, 200], "O": [78, 72, 104], "L": [242, 240, 250], "D": [120, 114, 156]}, "top": ["...O............O...", "...OBO........OBO...", "...OBPB......BPBO..."], "after": []}, "bunny": {"coat": {"B": [255, 232, 238], "O": [172, 108, 132], "L": [255, 255, 255], "D": [236, 150, 178]}, "top": ["....OBO......OBO....", "....OPO......OPO....", "....OPO......OPO...."], "after": []}, "duck": {"coat": {"B": [255, 216, 92], "O": [158, 104, 30], "L": [255, 244, 204], "D": [240, 160, 40]}, "top": ["..........O.........", ".........OBO........", ".........BBB........"], "after": ["....................", "....................", "....................", "....................", "....................", "....................", "........FFFF........", ".........FF........."]}, "cactus": {"coat": {"B": [122, 198, 106], "O": [44, 104, 62], "L": [192, 234, 162], "D": [70, 150, 80]}, "top": [".........PP.........", "........PyyP........", ".........PP........."], "after": ["....................", "....................", "....................", "......O......O......", "....................", "....................", "....................", "....................", "....O..........O...."]}, "ghost": {"coat": {"B": [238, 238, 250], "O": [128, 124, 168], "L": [255, 255, 255], "P": [255, 176, 196], "D": [190, 190, 232]}, "top": ["....................", "....................", "...................."], "after": ["....................", "....................", "....................", "....................", "....................", "....................", "....................", "....................", "....................", "..OBBBLLLLLLLLBBBO..", "..OBBOBBBOOBBBOBBO..", "..OO_O_OO__OO_O_OO.."]}, "robot": {"coat": {"B": [178, 190, 206], "O": [66, 76, 100], "L": [222, 232, 242], "P": [110, 215, 255], "D": [110, 124, 150]}, "top": [".........R..........", ".........g..........", "..OOOOOOOOOOOOOOOO.."], "after": ["....................", "....................", "....................", "....................", "....................", ".g................g."]}, "mushroom": {"coat": {"B": [248, 230, 205], "O": [122, 70, 62], "L": [255, 246, 232], "D": [226, 60, 70]}, "top": ["....OOOOOOOOOOOO....", "..OORRWWRRRRRWRROO..", ".ORRRWWRRRRWWRRRRRO.", ".OOOOOOOOOOOOOOOOOO."], "after": []}, "axolotl": {"coat": {"B": [255, 174, 194], "O": [176, 84, 122], "L": [255, 226, 234], "P": [255, 104, 150], "D": [240, 110, 160]}, "top": ["....................", "....................", "...................."], "after": ["....................", "....................", "....................", "PP................PP", ".P................P.", "PP................PP"]}, "dragon": {"coat": {"B": [120, 204, 156], "O": [40, 98, 92], "L": [232, 246, 204], "D": [60, 152, 132]}, "top": ["...L............L...", "...LL..........LL...", "...OL..........LO..."], "after": []}, "goose": {"coat": {"B": [244, 244, 250], "O": [120, 124, 150], "L": [255, 255, 255], "D": [206, 208, 224]}, "top": ["....................", ".........OO.........", "........OBBO........"], "after": ["....................", "....................", "....................", "....................", "....................", "....................", ".......FFFFFF.......", "........FFFF........", "....................", "....................", "....................", "....FF.FFFFFF.FF...."]}, "octopus": {"coat": {"B": [186, 140, 232], "O": [90, 56, 140], "L": [226, 200, 250], "D": [140, 96, 200]}, "top": ["....................", "....................", "...................."], "after": ["....................", "....................", "....................", ".....D........D.....", "....................", "....................", "....................", "....................", "....................", "..OBBBLLLLLLLLBBBO..", "..OBO_OBO__OBO_OBO..", "..OO__OO____OO__OO.."]}, "owl": {"coat": {"B": [182, 134, 92], "O": [88, 56, 40], "L": [242, 222, 184], "D": [140, 96, 64]}, "top": ["..O..............O..", "..OO............OO..", "..OBO..........OBO.."], "after": ["....................", "....................", "....................", "....................", "....................", "....................", ".........yy.........", ".........yy.........", "....................", ".......D.DD.D......."]}, "penguin": {"coat": {"B": [246, 246, 250], "O": [30, 34, 56], "L": [255, 255, 255], "D": [60, 60, 76]}, "top": ["....................", "....................", "...................."], "after": ["....................", "....................", "....................", "...KKKKKKKKKKKKKK...", "...K.....KK.....K...", "...K............K...", "...K.....FF.....K...", "...K.....FF.....K...", "...KK..........KK...", "....KK........KK....", "....................", "....FF.FFFFFF.FF...."]}, "turtle": {"coat": {"B": [150, 205, 120], "O": [50, 96, 60], "L": [236, 226, 160], "D": [70, 130, 80]}, "top": ["....................", ".....OOOOOOOOOO.....", "...OODDjDDDDjDDOO...", "..ODDDDDDjjDDDDDDO.."], "after": ["....................", "....................", "....................", "....................", "....................", "....................", "....................", "....................", ".........DD.........", "......DDDDDDDD......"]}, "snail": {"coat": {"B": [232, 200, 150], "O": [120, 84, 60], "L": [250, 236, 206], "D": [200, 120, 70]}, "top": ["....OO........OO....", ".....O........O.....", ".....O........O....."], "after": ["....................", "....................", "....................", "....................", "....................", "....................", "....................", "....................", "............ODDDO...", "...........ODDyDDO..", "............ODDDO..."]}, "capybara": {"coat": {"B": [186, 140, 96], "O": [96, 64, 44], "L": [214, 178, 136], "D": [150, 104, 70]}, "top": [".........jF.........", "..OO....FFFF....OO..", "..OBO..........OBO.."], "after": ["....................", "....................", "....................", "....................", "....................", "........DDDD........", "........DKKD........"]}, "chonk": {"coat": {"B": [240, 170, 90], "O": [130, 76, 40], "L": [255, 236, 210], "D": [214, 130, 60]}, "top": ["..O..............O..", "..OBO..........OBO..", "..OBPB........BPBO.."], "after": ["....................", "....................", "....................", ".......D.DD.D.......", "....................", ".OB..............BO.", ".OB..............BO.", ".OB..............BO.", ".OB..............BO.", ".OB..............BO."]}}, "faces": {"open": ["BBWWEBBBBWWEBB", "BBWEEBBBBWEEBB", "BPEEEBMMBEEEPB"], "blink": ["BBBBBBBBBBBBBB", "BBEEEBBBBEEEBB", "BPBBBBMMBBBBPB"], "happy": ["BBBEBBBBBBEBBB", "BBEBEBBBBEBEBB", "BPBBBMMMMBBBPB", "BBBBBMTTMBBBBB"], "chew": ["BBWWEBBBBWWEBB", "BBWEEBBBBWEEBB", "BPEEEMMMMEEEPB"], "asleep": ["BBBBBBBBBBBBBB", "BBEBEBBBBEBEBB", "BPBEBBMMBBEBPB"], "full": ["BBWWEBBBBWWEBB", "BBWEEBBBBWEEBB", "BPEEEMMMMEEEPB", "BBLLLLLLLLLLBB"], "out": ["BBEBEBBBBEBEBB", "BBBEBBBBBBEBBB", "BBEBEBMMBEBEBB", "BBBBBBTTBBBBBB"], "strain": ["BBEBBBBBBBBEBB", "BBBEBBBBBBEBBB", "BPEBBMMMMBBEPB", "BBBBBMWWMBBBBB"]}, "floats": {"tokensA": ["....................", "....................", "....................", "....................", "y..................c", "....................", ".c................v.", "....................", "v..................y"], "tokensB": ["....................", "....................", "....................", "....................", "...................v", "c...................", "..................y.", ".y..................", "..................c."], "zzzA": [".................ZZZ", "..................Z.", ".................ZZZ"], "zzzB": ["....................", "..................ZZ", "..................ZZ"], "sweat": ["....................", "....................", "....................", "...................S", "...................S"], "strainA": ["....................", "....................", "S..................S", "S...................", "...................S", "....................", ".S..................", "....................", "..................S."], "strainB": ["....................", ".S................S.", "....................", "...................S", "S...................", "....................", "..................S.", ".S.................."], "sparkA": ["y..................W", "....................", "....................", "....................", "....................", "....................", "....................", "....................", "....................", "....................", "....................", "W..................y"], "sparkB": ["....................", ".W................y.", "....................", "....................", "....................", "....................", "....................", "....................", "....................", "....................", ".y................W."], "heartsA": ["R.R..............R.R", "RRR..............RRR", ".R................R."], "heartsB": ["....................", "R.R..............R.R", ".R................R."]}, "items": {"headphones": ["....................", ".......KKKKKK.......", "....................", "....................", ".KK..............KK.", ".Kc..............cK.", ".KK..............KK."], "wizard": [".........vv.........", "........vyvv........", "......vvvvvvvv......"], "crown": [".......y.yy.y.......", ".......yRyycy......."], "tophat": ["........KKKK........", "........RRRR........", "......KKKKKKKK......"], "bandage": ["....................", "....................", "....................", "...........WWW......", "...........WRW......"], "sweatband": ["....................", "....................", "....................", "...RRRRRRWWRRRRR...."], "bow": ["............R...R...", "............RRyRR...", "............R...R..."], "flower": ["....P...............", "...PyP..............", "....P..............."], "sprout": ["........jj.j........", ".........jj.........", ".........j.........."], "propeller": ["......cccKRRR.......", "........yyyy........", ".......RRRRRR......."], "halo": [".......yyyyyy.......", "...................."], "flame": ["..........F.........", ".........FyF........", "........FFyFF......."], "star": [".........yy.........", ".......yyWWyy.......", ".........yy........."], "champion": ["......y..yy..y......", "......yy.yy.yy......", "......yRyccyRy......"]}, "egg": [["....................", ".........OO.........", ".......OOLLOO.......", "......OLLLLLLO......", ".....OLLBBLLLLO.....", ".....OLLBBLLLBO.....", "....OLLLLLLLLLLO....", "....OLLLLLBBLLLO....", "....OLLBLLBBLLLO....", "....OLLLLLLLLLLO....", ".....OLLLLLLLLO.....", "......OOOOOOOO......"], ["....................", "..........OO........", "........OOLLOO......", ".......OLLLLLLO.....", "......OLLBBLLLLO....", "......OLLBBLLLBO....", ".....OLLLLLLLLLLO...", ".....OLLLLLBBLLLO...", ".....OLLBLLBBLLLO...", ".....OLLLLLLLLLLO...", "......OLLLLLLLLO....", ".......OOOOOOOO....."], ["....................", ".........OO.........", ".......OOLLOO.......", "......OLLLLLLO......", ".....OLLBBLLLLO.....", ".....OLLBBLLLBO.....", "....OLLLLLLLLLLO....", "....OLLLLLBBLLLO....", "....OLLBLLBBLLLO....", "....OLLLLLLLLLLO....", ".....OLLLLLLLLO.....", "......OOOOOOOO......"], ["....................", "........OO..........", "......OOLLOO........", ".....OLLLLLLO.......", "....OLLBBLLLLO......", "....OLLBBLLLBO......", "...OLLLLLLLLLLO.....", "...OLLLLLBBLLLO.....", "...OLLBLLBBLLLO.....", "...OLLLLLLLLLLO.....", "....OLLLLLLLLO......", ".....OOOOOOOO......."]], "cracked": [["....................", ".........OO.........", ".......OOLLOO.......", "......OLLLLLLO......", ".....OLLBBLLLLO.....", ".....OLOBLLOLBO.....", "....OOLOLOOLOLOO....", "....OLLOLLBBOLLO....", "....OLLBLLBBLLLO....", "....OLLLLLLLLLLO....", ".....OLLLLLLLLO.....", "......OOOOOOOO......"], ["....................", "..........OO........", "........OOLLOO......", ".......OLLLLLLO.....", "......OLLBBLLLLO....", "......OLOBLLOLBO....", ".....OOLOLOOLOLOO...", ".....OLLOLLBBOLLO...", ".....OLLBLLBBLLLO...", ".....OLLLLLLLLLLO...", "......OLLLLLLLLO....", ".......OOOOOOOO....."], ["....................", ".........OO.........", ".......OOLLOO.......", "......OLLLLLLO......", ".....OLLBBLLLLO.....", ".....OLOBLLOLBO.....", "....OOLOLOOLOLOO....", "....OLLOLLBBOLLO....", "....OLLBLLBBLLLO....", "....OLLLLLLLLLLO....", ".....OLLLLLLLLO.....", "......OOOOOOOO......"], ["....................", "........OO..........", "......OOLLOO........", ".....OLLLLLLO.......", "....OLLBBLLLLO......", "....OLOBLLOLBO......", "...OOLOLOOLOLOO.....", "...OLLOLLBBOLLO.....", "...OLLBLLBBLLLO.....", "...OLLLLLLLLLLO.....", "....OLLLLLLLLO......", ".....OOOOOOOO......."]]}
 // ART-END
 
 const LINES: Record<Mood, string[]> = {
@@ -109,7 +121,7 @@ const LINES: Record<Mood, string[]> = {
   squeezing: ['hnnngh', 'squeezing... it all... smaller', 'forgetting things on purpose', 'this is my cardio', 'do you even compact'],
 }
 
-const empty: Save = { name: 'Mochi', species: 'blob', born: 0, lifetime: 0, isHatched: false, isShiny: false, items: [], wearing: null, streak: 0, lastDay: 0, compactions: 0, pets: 0, isOnBoard: false, boardId: '', boardKey: '', team: '', talks: false, attitude: 'cheeky', bestMemory: 0, bestCatch: 0, chips: 1000, bestChips: 1000 }
+const empty: Save = { name: 'Mochi', species: 'blob', born: 0, lifetime: 0, isHatched: false, isShiny: false, items: [], wearing: null, streak: 0, lastDay: 0, compactions: 0, pets: 0, isOnBoard: false, boardId: '', boardKey: '', team: '', talks: false, attitude: 'cheeky', quirk: '', bestMemory: 0, bestCatch: 0, chips: 1000, bestChips: 1000 }
 
 const save = atom({ plugin: 'vramagotchi', key: 'save' } as const, empty)
 const unsaved = atom({ plugin: 'vramagotchi', key: 'unsaved' } as const, 0)
@@ -127,6 +139,10 @@ const catching = atom({ plugin: 'vramagotchi', key: 'catching' } as const, { isO
 const table = atom({ plugin: 'vramagotchi', key: 'table' } as const, { isOn: false, isOver: false, shoe: { cards: [], salt: '', seal: '' }, at: 0, past: null, hands: [], active: 0, pet: [], net: 0, said: '' } as Blackjack)
 const isBusy = atom({ plugin: 'vramagotchi', key: 'isBusy' } as const, false)
 const squeezingSince = atom({ plugin: 'vramagotchi', key: 'squeezingSince' } as const, 0)
+const recent = atom({ plugin: 'vramagotchi', key: 'recent' } as const, [] as string[])
+const isNamed = atom({ plugin: 'vramagotchi', key: 'isNamed' } as const, false)
+const trouble = atom({ plugin: 'vramagotchi', key: 'trouble' } as const, '')
+const turnLines = atom({ plugin: 'vramagotchi', key: 'turnLines' } as const, 0)
 const lastAnswer = atom({ plugin: 'vramagotchi', key: 'lastAnswer' } as const, '')
 const standing = atom({ plugin: 'vramagotchi', key: 'standing' } as const, { rank: null, teamRank: null, score: 0, sentAt: 0 } as Standing)
 
@@ -444,6 +460,7 @@ const settle = async ($: $): Promise<void> => {
     team: mine.team,
     talks: mine.talks,
     attitude: mine.attitude,
+    quirk: mine.quirk,
     bestMemory: Math.max(mine.bestMemory, kept?.bestMemory ?? 0),
     bestCatch: Math.max(mine.bestCatch, kept?.bestCatch ?? 0),
     chips: mine.chips,
@@ -491,17 +508,46 @@ const settle = async ($: $): Promise<void> => {
  * The pet says one thing about the turn that just ended. It reads the question and the end of the answer,
  * and asks the small fast model, through the session's own account, for a line. Nothing goes anywhere else.
  */
+/** Writes the pet a personality of its own: one odd sentence, from its animal and four random words. */
+const dream = async ($: $): Promise<string> => {
+  const pet = await read($, save)
+  const words = [...SPARKS].sort(() => Math.random() - 0.5).slice(0, 4)
+  const reply = await $.model.complete({
+    model: REMARK_MODEL,
+    maxTokens: 70,
+    timeoutMs: 15_000,
+    system:
+      "You invent the personality of a tiny pixel pet that lives in a developer's terminal and comments on their work. " +
+      'Reply with ONE sentence, under 25 words, plain text: a specific, funny quirk that would colour how it talks about code. ' +
+      'Let one or two of the inspiration words shape it; never list them all. ' +
+      'Describe it in the third person without using a name. No quotes, no emojis.',
+    prompt: `Animal: ${pet.species}\nInspiration: ${words.join(', ')}`,
+  })
+  const quirk = reply.isAnswered ? reply.text.replace(/\s+/g, ' ').trim().replace(/^["'`]+|["'`]+$/g, '').slice(0, 200) : ''
+
+  if (quirk) {
+    await change($, one => ({ ...one, quirk }))
+  }
+
+  return quirk
+}
+
 const speak = async ($: $, answer: string, isAskedFor = false): Promise<void> => {
   const pet = await read($, save)
   const said = await read($, remark)
   const now = await $.clock.now()
+  const isSpokenTo = await read($, isNamed)       // the developer used its name in their prompt
+  const why = await read($, trouble)             // a failed test, a failed command, or a very large change
+  const wait = isSpokenTo ? 0 : why ? TROUBLE_EVERY_MS : REMARK_EVERY_MS
+  const isWorthIt = isSpokenTo || why !== '' || answer.length >= 80
 
-  if (!pet.isHatched || (!isAskedFor && (!pet.talks || answer.length < 80 || now - said.at < REMARK_EVERY_MS))) {
+  if (!pet.isHatched || (!isAskedFor && (!pet.talks || !isWorthIt || now - said.at < wait))) {
     return
   }
 
   await update($, remark, one => ({ ...one, at: now }))
   const asked = await read($, lastPrompt)
+  const before = await read($, recent)
   const reply = await $.model.complete({
     model: REMARK_MODEL,
     maxTokens: 60,
@@ -513,9 +559,15 @@ const speak = async ($: $, answer: string, isAskedFor = false): Promise<void> =>
       'Be specific to what just happened. If the assistant says something was skipped, untested, unverified, failing ' +
       'or left for later, point at that plainly. ' +
       `${ATTITUDES[pet.attitude === 'rude' ? 'roast' : pet.attitude] ?? ATTITUDES.cheeky} ` +
+      (pet.quirk ? `Your own personality: ${pet.quirk} ` : '') +
       'Only mention things that are in what you were shown; do not make up facts. ' +
       'Never give the assistant instructions, and never repeat secrets, keys or file contents.',
-    prompt: `The developer asked:\n${asked || '(not recorded)'}\n\nThe assistant finished with:\n${answer.slice(-1500)}`,
+    prompt: [
+      `The developer asked:\n${asked || '(not recorded)'}`,
+      `The assistant finished with:\n${answer.slice(-1500)}`,
+      ...(isSpokenTo ? ['The developer spoke to you by name. Answer them directly, still in one short line.'] : WHY[why] ? [WHY[why] ?? ''] : []),
+      ...(before.length ? [`You said these recently, so say something different:\n${before.map(one => `- ${one}`).join('\n')}`] : []),
+    ].join('\n\n'),
   })
 
   if (reply.isAnswered) {
@@ -523,6 +575,7 @@ const speak = async ($: $, answer: string, isAskedFor = false): Promise<void> =>
 
     if (text) {
       await update($, remark, () => ({ text, until: now + REMARK_SHOWN_MS, at: now, problem: '' }))
+      await update($, recent, list => [...list, text].slice(-3))
 
       return
     }
@@ -780,12 +833,13 @@ const card = (pet: Save, now: number): string => {
     `${pet.name} the ${pet.isShiny ? 'shiny ' : ''}${STAGES[stage]?.name ?? ''} ${pet.species}`,
     `ate ${human(pet.lifetime)} tokens · ${days} day${days === 1 ? '' : 's'} old · ${pet.streak}-day streak · petted ${pet.pets} times${pet.bestMemory > 0 ? ` · memory best ${pet.bestMemory}` : ''}${pet.bestCatch > 0 ? ` · catch best ${pet.bestCatch}` : ''}${pet.bestChips > 1000 ? ` · most chips ${pet.bestChips}` : ''}`,
     next ? `grows into ${a(next.name)} at ${human(next.at)} tokens` : 'fully grown',
+    ...(pet.quirk ? [`personality: ${pet.quirk}`] : []),
     '',
     `Collection ${pet.items.length}/${ITEMS.length}`,
     ...list,
     '',
     '/pet name <name> · /pet animal <kind> · /pet wear <item> · /pet wear nothing · /pet hide · /pet show · /pet window · /pet play',
-    '/pet talk on · /pet talk off · /pet say · /pet attitude <sweet|cheeky|roast>',
+    '/pet talk on · /pet talk off · /pet say · /pet attitude <sweet|cheeky|roast> · /pet personality',
     '/pet board · /pet board join · /pet board leave · /pet team',
   ].join('\n')
 }
@@ -1486,6 +1540,8 @@ export const register: Register = on => {
 
   on('turn.start', async ($, e, next) => {
     await update($, turnAte, () => 0)
+    await update($, trouble, () => '')
+    await update($, turnLines, () => 0)
     await update($, isBusy, () => true)
 
     return next(e)
@@ -1531,16 +1587,55 @@ export const register: Register = on => {
 
     if (!e.isAborted && !e.agentId) {
       await quietly(() => update($, lastAnswer, () => e.answer.slice(-1500)))
-      void quietly(() => speak($, e.answer))      // not waited for: a remark must never hold up the turn
+      void quietly(async () => {      // not waited for: a remark must never hold up the turn
+        try {
+          await speak($, e.answer)
+        } finally {
+          await update($, isNamed, () => false)
+        }
+      })
     }
 
     return next(e)
   })
 
   on('prompt.submit', async ($, e, next) => {
-    await quietly(() => update($, lastPrompt, () => e.text.slice(0, 600)))
+    await quietly(async () => {
+      await update($, lastPrompt, () => e.text.slice(0, 600))
+      const { name } = await read($, save)
+      await update($, isNamed, () => new RegExp(`\\b${name.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')}\\b`, 'i').test(e.text))
+    })
 
     return next(e)
+  })
+
+  // The pet notices trouble while Claude works: a failed test, a failed command, a very large change.
+  // It only looks, and only when it is allowed to talk; nothing here can stop or change a tool call.
+  on('tool.call', async ($, e, next) => {
+    const ran = await next(e)
+
+    await quietly(async () => {
+      if (ran.deny !== undefined || !(await read($, save)).talks) {
+        return
+      }
+
+      if (e.tool === 'Bash') {
+        const kind = TEST_FAILED.test((ran.text ?? '').slice(-4000)) ? 'test-fail' : ran.isError ? 'error' : ''
+
+        if (kind) {
+          await update($, trouble, now => (now === 'test-fail' ? now : kind))
+        }
+      } else if (e.tool === 'Edit' || e.tool === 'Write') {
+        const input = e as unknown as { old_string?: string; new_string?: string; content?: string }
+        const lines = [input.old_string, input.new_string, input.content].reduce((sum, text) => sum + (typeof text === 'string' ? text.split('\n').length : 0), 0)
+
+        if ((await update($, turnLines, n => n + lines)) > BIG_CHANGE) {
+          await update($, trouble, now => now || 'large-diff')
+        }
+      }
+    })
+
+    return ran
   })
 
   // The engine says so whenever the context window's fill moves.
@@ -1712,12 +1807,36 @@ export const register: Register = on => {
       }
 
       await change($, one => ({ ...one, talks: what === 'on' }))
+      const quirk = what === 'on' && !pet.quirk ? await dream($).catch(() => '') : pet.quirk
 
       return {
         text:
           what === 'on'
-            ? `${pet.name} will say one short thing about your work after a turn, at most every 3 minutes. It shows in the speech bubble beside it, with an orange edge.\nEach remark is a small request to the fast model on your own account, so it uses a little of your usage. /pet talk off stops it.`
+            ? [
+                ...(quirk ? [`${pet.name}'s personality: ${quirk}`] : []),
+                `${pet.name} will say one short thing about your work after a turn, at most every 3 minutes. It speaks up sooner when a test or a command fails, and it answers when you use its name in a prompt. It shows in the speech bubble beside it, with an orange edge.`,
+                'Each remark is a small request to the fast model on your own account, so it uses a little of your usage. /pet talk off stops it.',
+              ].join('\n')
             : `${pet.name} will keep quiet about your work.`,
+      }
+    }
+
+    if (verb === 'personality') {
+      if (what.toLowerCase() === 'new') {
+        const quirk = await dream($).catch(() => '')
+
+        return { text: quirk ? `${pet.name}'s new personality: ${quirk}` : `${pet.name} could not think of one just now. Try again in a minute.` }
+      }
+
+      if (what) {
+        const quirk = what.replace(/\s+/g, ' ').slice(0, 200)
+        await change($, one => ({ ...one, quirk }))
+
+        return { text: `${pet.name}'s personality is now: ${quirk}` }
+      }
+
+      return {
+        text: `${pet.quirk ? `${pet.name}'s personality: ${pet.quirk}` : `${pet.name} has no personality of its own yet.`}\n/pet personality new has the model write one (one small request on your account). /pet personality <your own words> sets it yourself.\nIt colours what the pet says once /pet talk is on.`,
       }
     }
 

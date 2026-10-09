@@ -27,6 +27,8 @@ export type Save = {
   talks: boolean
   /** How it talks: sweet, cheeky or roast. */
   attitude: string
+  /** Its own personality: one sentence the model wrote for it, or the owner did. Empty until it first talks. */
+  quirk: string
   /** The longest run of shapes it has got right in the memory game. */
   bestMemory: number
   /** The most tokens it has caught in one catch game. */
@@ -95,6 +97,10 @@ declare module 'claude-code' {
       lastAnswer: string
       squeezingSince: number
       isBusy: boolean
+      recent: string[]
+      isNamed: boolean
+      trouble: string
+      turnLines: number
       game: Game
       catching: Catch
       table: Blackjack

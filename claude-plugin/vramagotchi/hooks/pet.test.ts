@@ -168,6 +168,9 @@ test('the pet only remarks on a turn once its owner turns that on', async ($, on
     return { turnId: e.turnId, index: e.index, answer: 'ok', toolUses: [], usage: { input_tokens: 10, output_tokens: 900 } } as never
   })
   on('session.start', (_, e) => e as never)
+  on('turn.start', (_, e) => e as never)
+  on('prompt.submit', (_, e) => e as never)
+  on('tool.call', () => ({ result: {}, text: 'Tests: 3 failed, 12 passed', isError: true }) as never)
   on('turn.complete', () => ({ text: 'ok' }) as never)
   on('command.register', () => ({ value: undefined }) as never)
   on('ui.toast', () => ({ value: undefined }) as never)
@@ -185,25 +188,53 @@ test('the pet only remarks on a turn once its owner turns that on', async ($, on
   await turn()
   expect(asked).toEqual([])
 
-  await $.command.run({ command: 'pet', args: 'talk on' } as never)
+  const turnedOn = String(((await $.command.run({ command: 'pet', args: 'talk on' } as never)) as { text?: string }).text)
+  expect(asked.length).toBe(1)      // its personality is written the first time it is allowed to talk
+  expect(asked[0]?.system).toContain('personality')
+  expect(turnedOn).toContain('personality: Nobody ran the tests')
+  expect((kept.pet as Save).quirk).toBe('Nobody ran the tests, did they?')
+  const remarks = () => asked.filter(one => one.system?.includes('ONE short remark'))
+
   await clock.advance(10_000)
   await turn()
-  expect(asked.length).toBe(1)
-  expect(asked[0]?.prompt).toContain('did not run the test suite')
+  expect(remarks().length).toBe(1)
+  expect(remarks()[0]?.prompt).toContain('did not run the test suite')
+  expect(remarks()[0]?.system).toContain('Your own personality: Nobody ran the tests')
   expect(await (await band()).find({ type: 'Text', text: /Nobody ran the tests, did they\?/ })).toBeTruthy()
 
   await clock.advance(30_000)
   await turn()
-  expect(asked.length).toBe(1)
+  expect(remarks().length).toBe(1)
 
   await clock.advance(4 * 60_000)
   await turn()
-  expect(asked.length).toBe(2)
+  expect(remarks().length).toBe(2)
+  expect(remarks()[1]?.prompt).toContain('You said these recently')      // so it does not tell the same joke twice
+
+  // Its name in a prompt gets an answer at once, however lately it spoke.
+  await clock.advance(5_000)
+  await $.prompt.submit({ text: `hey ${(kept.pet as Save).name}, what do you think of this?` } as never)
+  await turn()
+  expect(remarks().length).toBe(3)
+  expect(remarks()[2]?.prompt).toContain('spoke to you by name')
+  await $.prompt.submit({ text: 'carry on' } as never)
+  await turn()
+  expect(remarks().length).toBe(3)
+
+  // A failed test brings it out sooner than the usual three minutes, and it is told why.
+  await clock.advance(50_000)
+  await $.turn.start({ turnId: 't2' } as never)
+  await $.tool.call({ tool: 'Bash', tool_use_id: 'b1', command: 'npm test' } as never)
+  await turn()
+  expect(remarks().length).toBe(4)
+  expect(remarks()[3]?.prompt).toContain('Tests failed during this turn')
 
   await $.command.run({ command: 'pet', args: 'talk off' } as never)
   await clock.advance(4 * 60_000)
+  await $.tool.call({ tool: 'Bash', tool_use_id: 'b2', command: 'npm test' } as never)
+  await $.prompt.submit({ text: `${(kept.pet as Save).name}?` } as never)
   await turn()
-  expect(asked.length).toBe(2)
+  expect(remarks().length).toBe(4)
 })
 
 test('the memory game shows shapes, takes them back in order, and keeps the best run', async ($, on) => {
