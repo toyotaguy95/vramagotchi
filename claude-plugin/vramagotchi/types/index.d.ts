@@ -1,4 +1,4 @@
-export type Mood = 'egg' | 'idle' | 'eating' | 'sleeping' | 'stuffed' | 'fainted' | 'happy' | 'loved'
+export type Mood = 'egg' | 'idle' | 'eating' | 'sleeping' | 'stuffed' | 'fainted' | 'happy' | 'loved' | 'squeezing'
 
 export type Context = { tokens: number; window: number }
 
@@ -49,6 +49,7 @@ declare module 'claude-code' {
       lastPrompt: string
       remark: Remark
       lastAnswer: string
+      squeezingSince: number
     }
   }
 }
