@@ -115,10 +115,22 @@ team's board or join it, and a pet can be on its team without being on the publi
 | `/pet say` | makes it remark on the last turn now |
 | `/pet attitude <sweet, cheeky or roast>` | how it talks |
 | `/pet hide` · `/pet show` | hides it and brings it back |
+| `/pet window` | gives the pet a window of its own, for VS Code and the mobile app |
 | `/pet board` · `/pet board join` · `/pet board leave` | the leaderboard, once it is open |
 | `/pet team` · `/pet team new <name>` · `/pet team join <code>` · `/pet team leave` | a private board for your team |
 
 Next to the pet there are also Pet, Wearing and Hide buttons.
+
+### Where it shows up
+
+| Where | How |
+|---|---|
+| Claude Code in a terminal | above the prompt |
+| The desktop app's Code tab | above the prompt, once the plugin is installed from a terminal |
+| VS Code and the mobile app | type `/pet window` |
+
+The terminal is the one that has been looked at on a real screen. The others are new: if one looks wrong,
+please open an issue with a screenshot.
 
 ## What leaves your computer
 

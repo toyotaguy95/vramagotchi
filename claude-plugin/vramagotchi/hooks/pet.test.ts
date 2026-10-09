@@ -23,6 +23,12 @@ test('an egg hatches on its first meal, then the pet earns things and survives a
   on('turn.complete', () => ({ text: 'ok' }) as never)
   on('command.register', () => ({ value: undefined }) as never)
   on('ui.toast', () => ({ value: undefined }) as never)
+  const opened: string[] = []
+  on('ui.open', (_, e) => {
+    opened.push((e as unknown as { id: string }).id)
+
+    return { value: { isOpen: true } } as never
+  })
   on('session.compact', () => ({ messages: [{ role: 'user', text: 'summary', toolUses: [], toolResults: [] }], tokensAfter: 8_000 }) as never)
 
   await $.session.start({ cwd: '/tmp', surface: 'terminal', isInteractive: true })
@@ -50,6 +56,16 @@ test('an egg hatches on its first meal, then the pet earns things and survives a
   expect(await desk.find({ type: 'Text', text: /baby \w+ · idle/ })).toBeTruthy()
   expect(await desk.find({ type: 'Svg' })).toBeTruthy()
   expect(await desk.find({ type: 'Raster' })).toBeFalsy()
+
+  // VS Code and the mobile app have no band, so there /pet window gives the pet a window of its own.
+  await $.command.run({ command: 'pet', args: 'window' } as never)
+  expect(opened).toEqual(['pet'])
+  for (const surface of ['vscode', 'mobile'] as const) {
+    const pane = await $.ui.mount({ plugin: 'vramagotchi', surface, component: 'Pane', requestId: 'pet', props: { title: 'Pet', isFocused: false, bodyColumns: 60, placement: 'inline' } } as never)
+    expect(await pane.find({ type: 'Svg' })).toBeTruthy()
+    expect(await pane.find({ type: 'Button', text: /Pet/ })).toBeTruthy()
+    expect(await pane.find({ type: 'Button', text: /Hide/ })).toBeFalsy()
+  }
 
   await $.session.compact({ trigger: 'manual', messages: [{ role: 'user', text: 'hello', toolUses: [], toolResults: [] }] } as never)
   expect((kept.pet as Save).items).toContain('bandage')

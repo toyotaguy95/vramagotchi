@@ -52,6 +52,7 @@ declare module 'claude-code' {
       remark: Remark
       lastAnswer: string
       squeezingSince: number
+      isBusy: boolean
     }
   }
 }

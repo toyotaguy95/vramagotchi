@@ -32,6 +32,7 @@ const BOARD_PAGE = ''         // the page people look at
 const REPORT_EVERY_MS = 10 * 60_000
 const BOARD_NAME = /^[A-Za-z0-9][A-Za-z0-9 ]{0,11}$/
 const TEAM_CODE = /^[a-z0-9]{1,12}-[a-z0-9]{8}$/      // a team is a code its members share: its name, a dash, eight random characters
+const WINDOW = 'pet'          // the id of the pet's own window
 const PIXEL = 6               // how big one pixel of the pet is drawn outside a terminal
 
 // Remarks: with /pet talk on, the pet says one short thing about the turn that just ended.
@@ -103,6 +104,7 @@ const partyUntil = atom({ plugin: 'vramagotchi', key: 'partyUntil' } as const, 0
 const lovedUntil = atom({ plugin: 'vramagotchi', key: 'lovedUntil' } as const, 0)
 const lastPrompt = atom({ plugin: 'vramagotchi', key: 'lastPrompt' } as const, '')
 const remark = atom({ plugin: 'vramagotchi', key: 'remark' } as const, { text: '', until: 0, at: 0, problem: '' } as Remark)
+const isBusy = atom({ plugin: 'vramagotchi', key: 'isBusy' } as const, false)
 const squeezingSince = atom({ plugin: 'vramagotchi', key: 'squeezingSince' } as const, 0)
 const lastAnswer = atom({ plugin: 'vramagotchi', key: 'lastAnswer' } as const, '')
 const standing = atom({ plugin: 'vramagotchi', key: 'standing' } as const, { rank: null, teamRank: null, score: 0, sentAt: 0 } as Standing)
@@ -333,6 +335,7 @@ const pose = (mood: Mood, frame: number, isSparkly: boolean): { face: string; fl
 // ---- the pet's life ----
 
 type $ = CoreEngineInterface
+type Site = Parameters<$['ui']['resolve']>[0]
 
 /** The pet is a guest: nothing that goes wrong in it may get in the way of the session. */
 const quietly = async (work: () => Promise<unknown>): Promise<void> => {
@@ -749,10 +752,157 @@ const card = (pet: Save, now: number): string => {
     `Collection ${pet.items.length}/${ITEMS.length}`,
     ...list,
     '',
-    '/pet name <name> · /pet animal <kind> · /pet wear <item> · /pet wear nothing · /pet hide · /pet show',
+    '/pet name <name> · /pet animal <kind> · /pet wear <item> · /pet wear nothing · /pet hide · /pet show · /pet window',
     '/pet talk on · /pet talk off · /pet say · /pet attitude <sweet|cheeky|roast>',
     '/pet board · /pet board join · /pet board leave · /pet team',
   ].join('\n')
+}
+
+/**
+ * Draws the pet and everything beside it. The same drawing serves the band above the prompt (the terminal and
+ * the desktop app) and the pet's own window (/pet window, for the apps that have no band).
+ */
+const drawPet = async ($: $, e: Site, isWorking: boolean, columns: number, isWindow: boolean) => {
+  const frame = await read($, tick)
+  const pet = await read($, save)
+  const { Box, Button, Text } = $.ui.resolve(e)
+  // A terminal draws the pet out of half-block characters; the apps draw the same pixels as an SVG.
+  const picture = (cells: (draw: Draw) => string, alt: string) => {
+    if (e.surface === 'terminal') {
+      const { Raster } = $.ui.resolve(e)
+
+      return <Raster key="pet" columns={COLUMNS} rows={ROWS} cells={cells(paint)} />
+    }
+
+    const { Svg } = $.ui.resolve(e)
+
+    return <Svg source={cells(sketch)} alt={alt} width={COLUMNS * PIXEL} height={ROWS * 2 * PIXEL} />
+  }
+
+  if (!pet.isHatched) {
+    const line = LINES.egg[Math.floor(frame / 12) % LINES.egg.length] ?? ''
+
+    return (
+      <Box paddingTop={1}>
+        {picture(draw => eggPicture(isWorking, isWorking ? frame : Math.floor(frame / 2), draw), 'An egg')}
+        <Box flexDirection="column" paddingLeft={2}>
+          <Text bold>An egg!</Text>
+          <Text dimColor>{line}</Text>
+          <Text>{isWorking ? "It's cracking..." : 'Send Claude a prompt to hatch it.'}</Text>
+        </Box>
+      </Box>
+    )
+  }
+
+  const now = await $.clock.now()
+  const { tokens, window } = await read($, context)
+  const idleFor = now - (await read($, lastActive))
+  const full = window > 0 ? tokens / window : 0
+  const squeezing = await read($, squeezingSince)
+  const mood: Mood =
+    squeezing > 0 && now - squeezing < 10 * 60_000
+      ? 'squeezing'
+      : now < (await read($, partyUntil))
+      ? 'happy'
+      : now < (await read($, lovedUntil))
+        ? 'loved'
+        : isWorking
+          ? 'eating'
+          : full >= 0.97
+            ? 'fainted'
+            : idleFor > SLEEP_AFTER_MS
+              ? 'sleeping'
+              : full >= 0.85
+                ? 'stuffed'
+                : 'idle'
+  const stage = stageOf(pet.lifetime)
+  const stageName = STAGES[stage]?.name ?? 'baby'
+  const next_ = STAGES[stage + 1]
+  const { face, floats } = pose(mood, frame, pet.isShiny || stageName === 'legend')
+  const stood = await read($, standing)
+  const rank = pet.isOnBoard ? stood.rank : pet.team ? stood.teamRank : null      // its place on the public board, or on its team if that is all it is on
+  const wearing = mood === 'fainted' ? null : pet.isOnBoard && stood.rank === 1 ? 'champion' : pet.wearing
+  const coats = [...(pet.isShiny ? ['shiny'] : []), ...(mood === 'fainted' ? ['fainted'] : [])]
+  const spoken = await read($, remark)
+  const isRemark = now < spoken.until && mood !== 'fainted' && mood !== 'squeezing'      // something it said about your work, not a stock line
+  const line = isRemark ? spoken.text : (LINES[mood][Math.floor(frame / 12) % LINES[mood].length] ?? '')
+  const owned = ITEMS.filter(item => pet.items.includes(item.id))
+  const outfits = [null, ...owned.map(item => item.id)]
+  const nextOutfit = outfits[(outfits.indexOf(pet.wearing) + 1) % outfits.length] ?? null
+  const wornName = owned.find(item => item.id === pet.wearing)?.name
+
+  // The text beside the pet is seven rows: its name, a speech bubble of four, its numbers, its buttons.
+  // The bubble only gets taller when the pet says something too long for two lines.
+  const room = Number.isFinite(columns) ? columns : 80
+  const bubbleWidth = Math.max(24, Math.min(96, room - COLUMNS - 6))
+  const bubbleRows = Math.max(2, Math.min(4, linesFor(line, bubbleWidth - 4)))      // grows for a long remark, so nothing is cut off
+  const cells = (part: number): string => '█'.repeat(Math.round(Math.min(1, part) * 6)).padEnd(6, '░')
+  const growing = next_ ? (pet.lifetime - (STAGES[stage]?.at ?? 0)) / (next_.at - (STAGES[stage]?.at ?? 0)) : 1
+
+  return (
+    <Box>
+      <Box paddingTop={1}>
+        {picture(draw => petPicture(pet.species, stageName, face, wearing, floats, coats, draw), `${pet.name}, ${a(`${stageName} ${pet.species}`)}, ${mood}`)}
+      </Box>
+      <Box flexDirection="column" paddingLeft={1}>
+        <Text bold wrap="truncate">
+          {' '}
+          {pet.isShiny ? '✦ ' : ''}
+          {pet.name} · {stageName} {pet.species} · {mood}
+          {rank ? ` · #${rank}` : ''}
+        </Text>
+        <Box>
+          <Box paddingTop={1}>
+            <Text color={isRemark ? SPEECH_COLOR : undefined} dimColor={!isRemark}>
+              ◀
+            </Text>
+          </Box>
+          <Box borderStyle="round" borderColor={isRemark ? SPEECH_COLOR : undefined} borderDimColor={!isRemark} width={bubbleWidth} height={bubbleRows + 2} paddingX={1} overflow="hidden">
+            <Text wrap="wrap" bold={isRemark} dimColor={!isRemark}>
+              {line}
+            </Text>
+          </Box>
+        </Box>
+        <Text wrap="truncate">
+          {' '}ate {human(pet.lifetime)}
+          {pet.streak > 1 ? ` · ${pet.streak}-day streak` : ''} · context {cells(full)} {Math.round(full * 100)}% ·{' '}
+          {next_ ? `${next_.name} ${cells(growing)} at ${human(next_.at)}` : 'fully grown'}
+        </Text>
+        <Box>
+          <Button
+            key="pet"
+            label="Pet"
+            onPress={async () => {
+              const at = await $.clock.now()
+              await update($, lovedUntil, () => at + 3000)
+              const after = await update($, save, one => ({ ...one, pets: one.pets + 1 }))
+
+              if (after.pets % 5 === 0) {
+                await settle($)
+              }
+            }}
+          />
+          {owned.length > 0 && (
+            <Button
+              key="wear"
+              label={wornName ? `Wearing: ${wornName}` : 'Wearing: nothing'}
+              onPress={() => change($, one => ({ ...one, wearing: nextOutfit }))}
+            />
+          )}
+          {!isWindow && (
+            <Button
+              key="hide"
+              label="Hide"
+              onPress={async () => {
+                await update($, isHidden, () => true)
+                $.ui.toast('Pet hidden. Type /pet show to bring it back.')
+              }}
+            />
+          )}
+        </Box>
+      </Box>
+    </Box>
+  )
 }
 
 export const register: Register = on => {
@@ -782,6 +932,7 @@ export const register: Register = on => {
 
   on('turn.start', async ($, e, next) => {
     await update($, turnAte, () => 0)
+    await update($, isBusy, () => true)
 
     return next(e)
   })
@@ -819,6 +970,7 @@ export const register: Register = on => {
       }
 
       await update($, lastActive, () => now)
+      await update($, isBusy, () => false)
       await settle($)
       await report($)
     })
@@ -904,6 +1056,12 @@ export const register: Register = on => {
       await update($, isHidden, () => verb === 'hide')
 
       return { text: verb === 'hide' ? 'Pet hidden. /pet show brings it back.' : `${pet.name} is back.` }
+    }
+
+    if (verb === 'window') {
+      await $.ui.open({ id: WINDOW, title: pet.name })
+
+      return { text: `${pet.name} has a window of its own now. It is for VS Code and the mobile app, where a pet cannot sit above the prompt.` }
     }
 
     if (verb === 'name' && what) {
@@ -1005,143 +1163,9 @@ export const register: Register = on => {
       return next(e)
     }
 
-    const frame = await read($, tick)
-    const pet = await read($, save)
-    const { Box, Button, Text } = $.ui.resolve(e)
-    // A terminal draws the pet out of half-block characters; the apps draw the same pixels as an SVG.
-    const picture = (cells: (draw: Draw) => string, alt: string) => {
-      if (e.surface === 'terminal') {
-        const { Raster } = $.ui.resolve(e)
-
-        return <Raster key="pet" columns={COLUMNS} rows={ROWS} cells={cells(paint)} />
-      }
-
-      const { Svg } = $.ui.resolve(e)
-
-      return <Svg source={cells(sketch)} alt={alt} width={COLUMNS * PIXEL} height={ROWS * 2 * PIXEL} />
-    }
-
-    if (!pet.isHatched) {
-      const line = LINES.egg[Math.floor(frame / 12) % LINES.egg.length] ?? ''
-
-      return (
-        <Box paddingTop={1}>
-          {picture(draw => eggPicture(e.props.isWorking, e.props.isWorking ? frame : Math.floor(frame / 2), draw), 'An egg')}
-          <Box flexDirection="column" paddingLeft={2}>
-            <Text bold>An egg!</Text>
-            <Text dimColor>{line}</Text>
-            <Text>{e.props.isWorking ? "It's cracking..." : 'Send Claude a prompt to hatch it.'}</Text>
-          </Box>
-        </Box>
-      )
-    }
-
-    const now = await $.clock.now()
-    const { tokens, window } = await read($, context)
-    const idleFor = now - (await read($, lastActive))
-    const full = window > 0 ? tokens / window : 0
-    const squeezing = await read($, squeezingSince)
-    const mood: Mood =
-      squeezing > 0 && now - squeezing < 10 * 60_000
-        ? 'squeezing'
-        : now < (await read($, partyUntil))
-        ? 'happy'
-        : now < (await read($, lovedUntil))
-          ? 'loved'
-          : e.props.isWorking
-            ? 'eating'
-            : full >= 0.97
-              ? 'fainted'
-              : idleFor > SLEEP_AFTER_MS
-                ? 'sleeping'
-                : full >= 0.85
-                  ? 'stuffed'
-                  : 'idle'
-    const stage = stageOf(pet.lifetime)
-    const stageName = STAGES[stage]?.name ?? 'baby'
-    const next_ = STAGES[stage + 1]
-    const { face, floats } = pose(mood, frame, pet.isShiny || stageName === 'legend')
-    const stood = await read($, standing)
-    const rank = pet.isOnBoard ? stood.rank : pet.team ? stood.teamRank : null      // its place on the public board, or on its team if that is all it is on
-    const wearing = mood === 'fainted' ? null : pet.isOnBoard && stood.rank === 1 ? 'champion' : pet.wearing
-    const coats = [...(pet.isShiny ? ['shiny'] : []), ...(mood === 'fainted' ? ['fainted'] : [])]
-    const spoken = await read($, remark)
-    const isRemark = now < spoken.until && mood !== 'fainted' && mood !== 'squeezing'      // something it said about your work, not a stock line
-    const line = isRemark ? spoken.text : (LINES[mood][Math.floor(frame / 12) % LINES[mood].length] ?? '')
-    const owned = ITEMS.filter(item => pet.items.includes(item.id))
-    const outfits = [null, ...owned.map(item => item.id)]
-    const nextOutfit = outfits[(outfits.indexOf(pet.wearing) + 1) % outfits.length] ?? null
-    const wornName = owned.find(item => item.id === pet.wearing)?.name
-
-    // The text beside the pet is seven rows: its name, a speech bubble of four, its numbers, its buttons.
-    // The bubble only gets taller when the pet says something too long for two lines.
-    const room = Number.isFinite(e.props.bodyColumns) ? e.props.bodyColumns : 80
-    const bubbleWidth = Math.max(24, Math.min(96, room - COLUMNS - 6))
-    const bubbleRows = Math.max(2, Math.min(4, linesFor(line, bubbleWidth - 4)))      // grows for a long remark, so nothing is cut off
-    const cells = (part: number): string => '█'.repeat(Math.round(Math.min(1, part) * 6)).padEnd(6, '░')
-    const growing = next_ ? (pet.lifetime - (STAGES[stage]?.at ?? 0)) / (next_.at - (STAGES[stage]?.at ?? 0)) : 1
-
-    return (
-      <Box>
-        <Box paddingTop={1}>
-          {picture(draw => petPicture(pet.species, stageName, face, wearing, floats, coats, draw), `${pet.name}, ${a(`${stageName} ${pet.species}`)}, ${mood}`)}
-        </Box>
-        <Box flexDirection="column" paddingLeft={1}>
-          <Text bold wrap="truncate">
-            {' '}
-            {pet.isShiny ? '✦ ' : ''}
-            {pet.name} · {stageName} {pet.species} · {mood}
-            {rank ? ` · #${rank}` : ''}
-          </Text>
-          <Box>
-            <Box paddingTop={1}>
-              <Text color={isRemark ? SPEECH_COLOR : undefined} dimColor={!isRemark}>
-                ◀
-              </Text>
-            </Box>
-            <Box borderStyle="round" borderColor={isRemark ? SPEECH_COLOR : undefined} borderDimColor={!isRemark} width={bubbleWidth} height={bubbleRows + 2} paddingX={1} overflow="hidden">
-              <Text wrap="wrap" bold={isRemark} dimColor={!isRemark}>
-                {line}
-              </Text>
-            </Box>
-          </Box>
-          <Text wrap="truncate">
-            {' '}ate {human(pet.lifetime)}
-            {pet.streak > 1 ? ` · ${pet.streak}-day streak` : ''} · context {cells(full)} {Math.round(full * 100)}% ·{' '}
-            {next_ ? `${next_.name} ${cells(growing)} at ${human(next_.at)}` : 'fully grown'}
-          </Text>
-          <Box>
-            <Button
-              key="pet"
-              label="Pet"
-              onPress={async () => {
-                const at = await $.clock.now()
-                await update($, lovedUntil, () => at + 3000)
-                const after = await update($, save, one => ({ ...one, pets: one.pets + 1 }))
-
-                if (after.pets % 5 === 0) {
-                  await settle($)
-                }
-              }}
-            />
-            {owned.length > 0 && (
-              <Button
-                key="wear"
-                label={wornName ? `Wearing: ${wornName}` : 'Wearing: nothing'}
-                onPress={() => change($, one => ({ ...one, wearing: nextOutfit }))}
-              />
-            )}
-            <Button
-              key="hide"
-              label="Hide"
-              onPress={async () => {
-                await update($, isHidden, () => true)
-                $.ui.toast('Pet hidden. Type /pet show to bring it back.')
-              }}
-            />
-          </Box>
-        </Box>
-      </Box>
-    )
+    return drawPet($, e, e.props.isWorking, e.props.bodyColumns, false)
   })
+
+  // VS Code and the mobile app have no band above the prompt, so there the pet lives in a window of its own.
+  on('ui.render', { component: 'Pane', requestId: WINDOW }, async ($, e) => drawPet($, e, await read($, isBusy), e.props.bodyColumns, true))
 }
