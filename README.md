@@ -89,6 +89,9 @@ Roast swears. It goes after the work, never after who someone is.
 | Luck, while it eats | flower, sprout, and the rarer propeller cap, halo and golden star |
 | Be first on the leaderboard | the champion's crown |
 
+A lucky find turns up about once every 200k tokens. Most are common, about one in eight is rare, and one in
+a hundred is the golden star: roughly once in 20M tokens.
+
 One egg in fifty hatches a shiny pet.
 
 ### It plays three games
