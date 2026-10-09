@@ -43,6 +43,13 @@ test('an egg hatches on its first meal, then the pet earns things and survives a
   const band = await $.ui.mount(BAND)
   expect(await band.find({ type: 'Text', text: /baby \w+ · idle/ })).toBeTruthy()
   expect(await band.find({ type: 'Text', text: /context ██░░░░ 25%/ })).toBeTruthy()
+  expect(await band.find({ type: 'Raster' })).toBeTruthy()
+
+  // The desktop app has no character grid to paint, so there the same pet is an SVG.
+  const desk = await $.ui.mount({ ...(BAND as object), surface: 'desktop' } as never)
+  expect(await desk.find({ type: 'Text', text: /baby \w+ · idle/ })).toBeTruthy()
+  expect(await desk.find({ type: 'Svg' })).toBeTruthy()
+  expect(await desk.find({ type: 'Raster' })).toBeFalsy()
 
   await $.session.compact({ trigger: 'manual', messages: [{ role: 'user', text: 'hello', toolUses: [], toolResults: [] }] } as never)
   expect((kept.pet as Save).items).toContain('bandage')
@@ -64,7 +71,7 @@ test('nothing reaches the leaderboard until the owner joins, and then only the p
     const call = e as unknown as { url: string; init?: { method?: string; body?: string } }
     sent.push({ url: call.url, method: call.init?.method ?? 'GET', body: JSON.parse(call.init?.body ?? '{}') })
 
-    return { value: { status: 200, ok: true, headers: {}, text: JSON.stringify({ rank: 1, score: 12_000, pets: [] }) } } as never
+    return { value: { status: 200, ok: true, headers: {}, text: JSON.stringify({ rank: 1, teamRank: 2, score: 12_000, pets: [], shiny: true, items: ['headphones', 'star'], found: ['star'] }) } } as never
   })
   on('session.usage', () => ({ value: { startedAt: 0, context: { tokens: 50_000, window: 200_000 }, rateLimits: [] } }) as never)
   on('turn.step', async function* (_, e) {
@@ -90,8 +97,13 @@ test('nothing reaches the leaderboard until the owner joins, and then only the p
   expect(String((joined as { text?: string }).text)).toContain('Mochi is on the board')
   expect(sent.length).toBe(1)
   expect(sent[0]?.url).toBe('https://board.test/pets')
-  expect(Object.keys(sent[0]?.body ?? {}).sort()).toEqual(['id', 'items', 'key', 'lifetime', 'name', 'shiny', 'species', 'wearing'])
+  expect(Object.keys(sent[0]?.body ?? {}).sort()).toEqual(['id', 'items', 'key', 'lifetime', 'name', 'public', 'species', 'wearing'])
   expect(sent[0]?.body.lifetime).toBe(12_000)
+  expect(sent[0]?.body.public).toBe(true)
+
+  // The board rolls the luck: what it says the pet found, and that it is shiny, is kept here.
+  expect((kept.pet as Save).items).toContain('star')
+  expect((kept.pet as Save).isShiny).toBe(true)
 
   await clock.advance(11 * 60_000)
   await turn()
@@ -105,6 +117,19 @@ test('nothing reaches the leaderboard until the owner joins, and then only the p
   await clock.advance(11 * 60_000)
   await turn()
   expect(sent.length).toBe(3)
+
+  // A team: the pet goes on its team's board without going on the public one.
+  expect(String(((await $.command.run({ command: 'pet', args: 'team join nonsense' } as never)) as { text?: string }).text)).toContain('not a team code')
+  const started = String(((await $.command.run({ command: 'pet', args: 'team new Acme Inc' } as never)) as { text?: string }).text)
+  const code = /\/pet team join (acmeinc-[a-f0-9]{8})/.exec(started)?.[1]
+  expect(code).toBeTruthy()
+  expect(sent.length).toBe(4)
+  expect(sent[3]?.body.team).toBe(code)
+  expect(sent[3]?.body.public).toBe(false)
+  expect(await (await $.ui.mount({ plugin: 'vramagotchi', surface: 'terminal', component: 'AbovePrompt', props: { hasSurvey: false, isWorking: false, maxRows: 20, bodyColumns: 100 } } as never)).find({ type: 'Text', text: /#2/ })).toBeTruthy()
+  await $.command.run({ command: 'pet', args: 'team leave' } as never)
+  expect(sent[4]?.method).toBe('DELETE')
+  expect((kept.pet as Save).team).toBe('')
 })
 
 test('the pet only remarks on a turn once its owner turns that on', async ($, on) => {

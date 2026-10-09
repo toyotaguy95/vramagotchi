@@ -21,6 +21,8 @@ export type Save = {
   isOnBoard: boolean
   boardId: string
   boardKey: string
+  /** The code of the team it is on, like "acme-k3x9q2ab", or nothing. A pet can be on a team without being on the public board. */
+  team: string
   /** Whether it remarks on the owner's work after a turn. Off unless the owner turns it on. */
   talks: boolean
   /** How it talks: sweet, cheeky or roast. */
@@ -31,7 +33,7 @@ export type Save = {
 export type Remark = { text: string; until: number; at: number; problem: string }
 
 /** Where the pet stands on the leaderboard, as the board last said. */
-export type Standing = { rank: number | null; score: number; sentAt: number }
+export type Standing = { rank: number | null; teamRank: number | null; score: number; sentAt: number }
 
 declare module 'claude-code' {
   interface PluginState {

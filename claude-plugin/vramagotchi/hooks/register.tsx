@@ -31,6 +31,8 @@ const BOARD_API = ''          // where pets report; empty until the board is ope
 const BOARD_PAGE = ''         // the page people look at
 const REPORT_EVERY_MS = 10 * 60_000
 const BOARD_NAME = /^[A-Za-z0-9][A-Za-z0-9 ]{0,11}$/
+const TEAM_CODE = /^[a-z0-9]{1,12}-[a-z0-9]{8}$/      // a team is a code its members share: its name, a dash, eight random characters
+const PIXEL = 6               // how big one pixel of the pet is drawn outside a terminal
 
 // Remarks: with /pet talk on, the pet says one short thing about the turn that just ended.
 const REMARK_EVERY_MS = 3 * 60_000
@@ -88,7 +90,7 @@ const LINES: Record<Mood, string[]> = {
   squeezing: ['hnnngh', 'squeezing... it all... smaller', 'forgetting things on purpose', 'this is my cardio', 'do you even compact'],
 }
 
-const empty: Save = { name: 'Mochi', species: 'blob', born: 0, lifetime: 0, isHatched: false, isShiny: false, items: [], wearing: null, streak: 0, lastDay: 0, compactions: 0, pets: 0, isOnBoard: false, boardId: '', boardKey: '', talks: false, attitude: 'cheeky' }
+const empty: Save = { name: 'Mochi', species: 'blob', born: 0, lifetime: 0, isHatched: false, isShiny: false, items: [], wearing: null, streak: 0, lastDay: 0, compactions: 0, pets: 0, isOnBoard: false, boardId: '', boardKey: '', team: '', talks: false, attitude: 'cheeky' }
 
 const save = atom({ plugin: 'vramagotchi', key: 'save' } as const, empty)
 const unsaved = atom({ plugin: 'vramagotchi', key: 'unsaved' } as const, 0)
@@ -103,7 +105,7 @@ const lastPrompt = atom({ plugin: 'vramagotchi', key: 'lastPrompt' } as const, '
 const remark = atom({ plugin: 'vramagotchi', key: 'remark' } as const, { text: '', until: 0, at: 0, problem: '' } as Remark)
 const squeezingSince = atom({ plugin: 'vramagotchi', key: 'squeezingSince' } as const, 0)
 const lastAnswer = atom({ plugin: 'vramagotchi', key: 'lastAnswer' } as const, '')
-const standing = atom({ plugin: 'vramagotchi', key: 'standing' } as const, { rank: null, score: 0, sentAt: 0 } as Standing)
+const standing = atom({ plugin: 'vramagotchi', key: 'standing' } as const, { rank: null, teamRank: null, score: 0, sentAt: 0 } as Standing)
 
 const human = (n: number): string =>
   n >= 1e6 ? `${+(n / 1e6).toFixed(1)}M` : n >= 1e3 ? `${+(n / 1e3).toFixed(1)}k` : `${Math.round(n)}`
@@ -171,19 +173,51 @@ const stamp = (px: string[][], art: string[] | undefined, top: number, left: num
   })
 }
 
-/** Turns rows of colour letters into a Raster's cells: two pixels, one above the other, per character. */
-const paint = (px: string[][], coats: (Palette | undefined)[]): string => {
+/** A way to turn a picture into what a surface draws: a terminal's cells, or an SVG for the apps. */
+type Draw = (px: string[][], coats: (Palette | undefined)[]) => string
+
+const colorsFor = (coats: (Palette | undefined)[]): ((ch: string | undefined) => number) => {
   const palette: Palette = { ...ART.colors }
 
   for (const coat of coats) {
     Object.assign(palette, coat ?? {})
   }
 
-  const color = (ch: string | undefined): number => {
+  return ch => {
     const c = ch ? palette[ch] : undefined
 
     return c ? ((c[0] ?? 0) << 16) | ((c[1] ?? 0) << 8) | (c[2] ?? 0) : -1
   }
+}
+
+/** Turns rows of colour letters into an SVG: one square per pixel, neighbours of one colour joined into a bar. */
+const sketch: Draw = (px, coats) => {
+  const color = colorsFor(coats)
+  let bars = ''
+
+  for (let y = 0; y < ROWS * 2; y++) {
+    for (let x = 0; x < COLUMNS; ) {
+      const c = color(px[y]?.[x])
+      let end = x + 1
+
+      while (end < COLUMNS && color(px[y]?.[end]) === c) {
+        end += 1
+      }
+
+      if (c >= 0) {
+        bars += `<rect x="${x}" y="${y}" width="${end - x}" height="1" fill="#${c.toString(16).padStart(6, '0')}"/>`
+      }
+
+      x = end
+    }
+  }
+
+  return `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 ${COLUMNS} ${ROWS * 2}" width="${COLUMNS * PIXEL}" height="${ROWS * 2 * PIXEL}" shape-rendering="crispEdges">${bars}</svg>`
+}
+
+/** Turns rows of colour letters into a Raster's cells: two pixels, one above the other, per character. */
+const paint: Draw = (px, coats) => {
+  const color = colorsFor(coats)
   const bytes: number[] = []
   const put = (...words: number[]): void => {
     for (const w of words) {
@@ -231,16 +265,16 @@ const remembered = (key: string, make: () => string): string => {
   return made
 }
 
-const eggPicture = (isCracked: boolean, frame: number): string =>
-  remembered(`egg ${isCracked} ${frame % 4}`, () => {
+const eggPicture = (isCracked: boolean, frame: number, draw: Draw = paint): string =>
+  remembered(`egg ${isCracked} ${frame % 4} ${draw === paint}`, () => {
     const frames = isCracked ? ART.cracked : ART.egg
 
-    return paint((frames[frame % 4] ?? []).map(row => [...row]), [])
+    return draw((frames[frame % 4] ?? []).map(row => [...row]), [])
   })
 
 /** Puts a pet together: its body, its animal's head, what growing up added, its face, what it wears, what floats. */
-const petPicture = (species: string, stage: string, face: string, item: string | null, floats: string[], coats: string[]): string =>
-  remembered([species, stage, face, item, floats, coats].join('|'), () => {
+const petPicture = (species: string, stage: string, face: string, item: string | null, floats: string[], coats: string[], draw: Draw = paint): string =>
+  remembered([species, stage, face, item, floats, coats, draw === paint].join('|'), () => {
     const isBaby = stage === 'baby'
     const body = ART.bodies[isBaby ? 'baby' : 'grown']
     const animal = ART.species[species] ?? ART.species.blob
@@ -268,7 +302,7 @@ const petPicture = (species: string, stage: string, face: string, item: string |
       stamp(px, ART.floats[name], 0, 0, false)
     }
 
-    return paint(px, [animal.coat, stage === 'legend' ? ART.coats.legend : undefined, ...coats.map(name => ART.coats[name])])
+    return draw(px, [animal.coat, stage === 'legend' ? ART.coats.legend : undefined, ...coats.map(name => ART.coats[name])])
   })
 
 /** What the pet looks like this instant: which face, and what floats around it. */
@@ -332,6 +366,13 @@ const change = async ($: $, edit: (pet: Save) => Save): Promise<Save> => {
   return pet
 }
 
+/** Where this pet reports to: the board's address if it is on the board or a team, else nothing. */
+const reports = async ($: $): Promise<string> => {
+  const pet = await read($, save)
+
+  return pet.isOnBoard || pet.team ? boardApi($) : ''
+}
+
 /** Lucky finds: the more it ate this turn, the better the odds. Rarer things come up less often. */
 const find = (pet: Save, turn: number): Item | undefined => {
   if (Math.random() >= 1 - (1 - DROP_ODDS_PER_1K) ** (turn / 1000)) {
@@ -349,6 +390,7 @@ const find = (pet: Save, turn: number): Item | undefined => {
  * The saved pet is read again first, so two sessions feeding one pet both count.
  */
 const settle = async ($: $): Promise<void> => {
+  const isBoardsLuck = (await reports($)) !== ''
   const now = await $.clock.now()
   const mine = await read($, save)
   const pending = await read($, unsaved)
@@ -368,6 +410,7 @@ const settle = async ($: $): Promise<void> => {
     isOnBoard: mine.isOnBoard || (kept?.isOnBoard ?? false),
     boardId: mine.boardId || (kept?.boardId ?? ''),
     boardKey: mine.boardKey || (kept?.boardKey ?? ''),
+    team: mine.team,
     talks: mine.talks,
     attitude: mine.attitude,
   }
@@ -388,7 +431,7 @@ const settle = async ($: $): Promise<void> => {
   }
 
   if (pet.isHatched) {
-    const found = pending > 0 ? find(pet, turn) : undefined
+    const found = pending > 0 && !isBoardsLuck ? find(pet, turn) : undefined      // on the board, the board rolls the dice
     const earned = ITEMS.filter(item => !pet.items.includes(item.id) && (item.isEarned?.(pet, turn) || item === found))
 
     for (const item of earned) {
@@ -470,12 +513,12 @@ const asJson = (text: string): Record<string, unknown> => {
 
 /** Tells the board what the pet has eaten. Sends its name, its count and what it owns; nothing else leaves the computer. */
 const report = async ($: $, isForced = false): Promise<string | undefined> => {
-  const api = await boardApi($)
+  const api = await reports($)
   const pet = await read($, save)
   const seen = await read($, standing)
   const now = await $.clock.now()
 
-  if (!api || !pet.isOnBoard || !pet.isHatched || (!isForced && now - seen.sentAt < REPORT_EVERY_MS)) {
+  if (!api || !pet.isHatched || (!isForced && now - seen.sentAt < REPORT_EVERY_MS)) {
     return undefined
   }
 
@@ -483,20 +526,81 @@ const report = async ($: $, isForced = false): Promise<string | undefined> => {
   const answer = await $.http.fetch(`${api}/pets`, {
     method: 'POST',
     headers: { 'content-type': 'application/json' },
-    body: JSON.stringify({ id: pet.boardId, key: pet.boardKey, name: pet.name, species: pet.species, lifetime: Math.round(pet.lifetime), items: pet.items, wearing: pet.wearing, shiny: pet.isShiny }),
+    body: JSON.stringify({ id: pet.boardId, key: pet.boardKey, name: pet.name, species: pet.species, lifetime: Math.round(pet.lifetime), items: pet.items, wearing: pet.wearing, public: pet.isOnBoard, team: pet.team || undefined }),
   })
   const got = asJson(answer.text)
 
   if (!answer.ok) {
-    return typeof got.error === 'string' ? got.error : 'the board did not answer'
+    return typeof got.error === 'string' ? (got.error === 'too soon' ? 'the board takes one update a minute, so try again in a minute' : got.error) : 'the board did not answer'
   }
 
   const rank = typeof got.rank === 'number' ? got.rank : null
-  await update($, standing, () => ({ rank, score: typeof got.score === 'number' ? got.score : 0, sentAt: now }))
+  const teamRank = typeof got.teamRank === 'number' ? got.teamRank : null
+  await update($, standing, () => ({ rank, teamRank, score: typeof got.score === 'number' ? got.score : 0, sentAt: now }))
 
-  if (rank === 1 && seen.rank !== 1) {
-    await cheer($, [`${pet.name} is first on the board and wears the crown!`])
+  // The board rolls the luck: what it says the pet found, or that it is shiny, becomes true here too.
+  const given = Array.isArray(got.items) ? got.items : []
+  const gifts = ITEMS.filter(item => given.includes(item.id) && !pet.items.includes(item.id))
+  const isNewlyShiny = got.shiny === true && !pet.isShiny
+  const news = [
+    ...(isNewlyShiny ? [`The board rolled its dice: ${pet.name} is a rare shiny one!`] : []),
+    ...gifts.map(item => (item.isEarned ? `${pet.name} earned the ${item.name}!` : `${pet.name} found a ${item.name}! (${item.rarity})`)),
+    ...(rank === 1 && seen.rank !== 1 ? [`${pet.name} is first on the board and wears the crown!`] : []),
+  ]
+
+  if (gifts.length > 0 || isNewlyShiny) {
+    await change($, one => ({
+      ...one,
+      isShiny: one.isShiny || isNewlyShiny,
+      items: ITEMS.map(item => item.id).filter(id => one.items.includes(id) || gifts.some(item => item.id === id)),
+      wearing: one.wearing ?? gifts[0]?.id ?? null,
+    }))
   }
+
+  await cheer($, news)
+
+  return undefined
+}
+
+type Listed = { rank: number; name: string; score: number; stage: string; species?: string }
+
+const listed = (got: Record<string, unknown>): string[] => {
+  const pets = Array.isArray(got.pets) ? (got.pets as Listed[]) : []
+
+  return pets.length ? pets.slice(0, 10).map(one => `  ${String(one.rank).padStart(2)}. ${one.name} the ${one.stage} ${one.species ?? ''} · ${human(one.score)} tokens`) : ['  nobody yet']
+}
+
+/** Makes sure the pet can be listed at all, and gives it the id and key it reports with. */
+const admit = async ($: $): Promise<string | undefined> => {
+  const pet = await read($, save)
+
+  if (!pet.isHatched) {
+    return 'Hatch your egg first: send Claude a prompt.'
+  }
+
+  if (!BOARD_NAME.test(pet.name)) {
+    return 'On the board a name is 1 to 12 letters, digits or spaces. Rename your pet with /pet name <name>, then try again.'
+  }
+
+  await change($, one => ({ ...one, boardId: one.boardId || hex(32), boardKey: one.boardKey || hex(48) }))
+
+  return undefined
+}
+
+/** Takes the pet off the public board or off its team. If that leaves it on neither, the board forgets it. */
+const depart = async ($: $, api: string, edit: (pet: Save) => Save): Promise<string | undefined> => {
+  const before = await read($, save)
+  const pet = await change($, edit)
+
+  if (pet.isOnBoard || pet.team) {
+    return report($, true)
+  }
+
+  if (before.boardId) {
+    await $.http.fetch(`${api}/pets`, { method: 'DELETE', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ id: before.boardId, key: before.boardKey }) })
+  }
+
+  await update($, standing, () => ({ rank: null, teamRank: null, score: 0, sentAt: 0 }))
 
   return undefined
 }
@@ -510,46 +614,116 @@ const boardCommand = async ($: $, what: string): Promise<string> => {
   }
 
   if (what === 'join') {
-    if (!pet.isHatched) {
-      return 'Hatch your egg first: send Claude a prompt.'
+    const refusal = await admit($)
+
+    if (refusal) {
+      return refusal
     }
 
-    if (!BOARD_NAME.test(pet.name)) {
-      return 'On the board a name is 1 to 12 letters, digits or spaces. Rename your pet with /pet name <name>, then join.'
-    }
-
-    await change($, one => ({ ...one, isOnBoard: true, boardId: one.boardId || hex(32), boardKey: one.boardKey || hex(48) }))
+    await change($, one => ({ ...one, isOnBoard: true }))
     const problem = await report($, true)
     const { rank, score } = await read($, standing)
 
-    return problem
-      ? `Could not join: ${problem}.`
-      : `${pet.name} is on the board with ${human(score)} tokens${rank ? `, in place ${rank}` : ''}. ${BOARD_PAGE}\nIt sends its name, what it ate and what it owns. /pet board leave takes it off.`
+    if (problem) {
+      await change($, one => ({ ...one, isOnBoard: pet.isOnBoard }))
+
+      return `Could not join: ${problem}.`
+    }
+
+    return `${pet.name} is on the board with ${human(score)} tokens${rank ? `, in place ${rank}` : ''}. ${BOARD_PAGE}\nIt sends its name, its animal, what it ate and what it owns. From now on the board rolls its lucky finds. /pet board leave takes it off.`
   }
 
   if (what === 'leave') {
-    if (pet.boardId) {
-      await $.http.fetch(`${api}/pets`, { method: 'DELETE', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ id: pet.boardId, key: pet.boardKey }) })
-    }
+    const problem = await depart($, api, one => ({ ...one, isOnBoard: false }))
 
-    await change($, one => ({ ...one, isOnBoard: false }))
-    await update($, standing, () => ({ rank: null, score: 0, sentAt: 0 }))
-
-    return `${pet.name} is off the board.`
+    return problem ? `${pet.name} is off the board here, but the board has not heard yet: ${problem}.` : `${pet.name} is off the board.`
   }
 
   const answer = await $.http.fetch(`${api}/board${pet.isOnBoard ? `?id=${pet.boardId}` : ''}`)
   const got = asJson(answer.text)
-  const pets = Array.isArray(got.pets) ? (got.pets as { rank: number; name: string; score: number; stage: string }[]) : []
   const you = got.you as { rank: number | null; score: number } | undefined
-  const top = pets.slice(0, 10).map(one => `  ${String(one.rank).padStart(2)}. ${one.name} the ${one.stage} · ${human(one.score)} tokens`)
 
   return [
     'VRAMagotchi board',
-    ...(top.length ? top : ['  nobody yet']),
+    ...listed(got),
     '',
     pet.isOnBoard && you ? `${pet.name}: ${you.rank ? `place ${you.rank}` : 'not in the top 100 yet'} with ${human(you.score)} tokens` : 'Your pet is not on the board. /pet board join puts it there.',
     BOARD_PAGE,
+  ].join('\n')
+}
+
+const teamPage = (code: string): string => (BOARD_PAGE ? `${BOARD_PAGE}?team=${code}` : '')
+
+const teamCommand = async ($: $, what: string): Promise<string> => {
+  const api = await boardApi($)
+  const pet = await read($, save)
+  const [verb = '', ...rest] = what.split(/\s+/)
+  const word = rest.join(' ').trim()
+
+  if (!api) {
+    return 'Teams open with the leaderboard, which is not open yet.'
+  }
+
+  if (verb === 'new' || verb === 'join') {
+    const name = word.toLowerCase().replace(/[^a-z0-9]/g, '').slice(0, 12)
+    const code = verb === 'new' ? `${name}-${hex(8)}` : word.toLowerCase()
+
+    if (verb === 'new' && !name) {
+      return 'Give the team a name of letters and digits: /pet team new acme'
+    }
+
+    if (!TEAM_CODE.test(code)) {
+      return 'That is not a team code. A code looks like acme-k3x9q2ab. Ask a teammate for theirs, or start a team with /pet team new <name>.'
+    }
+
+    const refusal = await admit($)
+
+    if (refusal) {
+      return refusal
+    }
+
+    await change($, one => ({ ...one, team: code }))
+    const problem = await report($, true)
+
+    if (problem) {
+      await change($, one => ({ ...one, team: pet.team }))
+
+      return `Could not join the team: ${problem}.`
+    }
+
+    const { teamRank } = await read($, standing)
+
+    return [
+      verb === 'new' ? `Team ${name} is started, and ${pet.name} is on it.` : `${pet.name} joined team ${code.slice(0, code.lastIndexOf('-'))}${teamRank ? `, in place ${teamRank}` : ''}.`,
+      `Teammates join with:  /pet team join ${code}`,
+      ...(teamPage(code) ? [`Team board: ${teamPage(code)}`] : []),
+      'Anyone who has the code can see the team board and join it, so share it only with the team.',
+      pet.isOnBoard ? '' : `${pet.name} is on the team board only. /pet board join also puts it on the public one.`,
+    ].filter(Boolean).join('\n')
+  }
+
+  if (!pet.team) {
+    return 'Your pet is not on a team.\n/pet team new <name> starts one and gives you a code to share.\n/pet team join <code> joins one a teammate started.'
+  }
+
+  if (verb === 'leave') {
+    const problem = await depart($, api, one => ({ ...one, team: '' }))
+
+    return problem ? `${pet.name} left the team here, but the board has not heard yet: ${problem}.` : `${pet.name} left the team.`
+  }
+
+  const answer = await $.http.fetch(`${api}/board?team=${pet.team}&id=${pet.boardId}`)
+  const got = asJson(answer.text)
+  const you = got.you as { rank: number | null; score: number } | undefined
+
+  return [
+    `Team ${typeof got.team === 'string' ? got.team : pet.team}`,
+    ...listed(got),
+    '',
+    ...(you ? [`${pet.name}: ${you.rank ? `place ${you.rank}` : 'not in the top 100 yet'} with ${human(you.score)} tokens`] : []),
+    `Teammates join with:  /pet team join ${pet.team}`,
+    ...(teamPage(pet.team) ? [teamPage(pet.team)] : []),
+    '/pet team leave takes your pet off the team.',
   ].join('\n')
 }
 
@@ -577,7 +751,7 @@ const card = (pet: Save, now: number): string => {
     '',
     '/pet name <name> · /pet animal <kind> · /pet wear <item> · /pet wear nothing · /pet hide · /pet show',
     '/pet talk on · /pet talk off · /pet say · /pet attitude <sweet|cheeky|roast>',
-    '/pet board · /pet board join · /pet board leave',
+    '/pet board · /pet board join · /pet board leave · /pet team',
   ].join('\n')
 }
 
@@ -803,9 +977,9 @@ export const register: Register = on => {
       return { text: `${pet.name} is ${a(kind)} now.` }
     }
 
-    if (verb === 'board') {
+    if (verb === 'board' || verb === 'team') {
       try {
-        return { text: await boardCommand($, what) }
+        return { text: await (verb === 'board' ? boardCommand($, what) : teamCommand($, what)) }
       } catch {
         return { text: 'The board could not be reached. Try again in a minute.' }
       }
@@ -827,20 +1001,32 @@ export const register: Register = on => {
   })
 
   on('ui.render', { component: 'AbovePrompt' }, async ($, e, next) => {
-    if (e.props.hasSurvey || e.surface !== 'terminal' || (await read($, isHidden))) {
+    if (e.props.hasSurvey || (await read($, isHidden))) {
       return next(e)
     }
 
     const frame = await read($, tick)
     const pet = await read($, save)
-    const { Box, Button, Raster, Text } = $.ui.resolve(e)
+    const { Box, Button, Text } = $.ui.resolve(e)
+    // A terminal draws the pet out of half-block characters; the apps draw the same pixels as an SVG.
+    const picture = (cells: (draw: Draw) => string, alt: string) => {
+      if (e.surface === 'terminal') {
+        const { Raster } = $.ui.resolve(e)
+
+        return <Raster key="pet" columns={COLUMNS} rows={ROWS} cells={cells(paint)} />
+      }
+
+      const { Svg } = $.ui.resolve(e)
+
+      return <Svg source={cells(sketch)} alt={alt} width={COLUMNS * PIXEL} height={ROWS * 2 * PIXEL} />
+    }
 
     if (!pet.isHatched) {
       const line = LINES.egg[Math.floor(frame / 12) % LINES.egg.length] ?? ''
 
       return (
         <Box paddingTop={1}>
-          <Raster key="pet" columns={COLUMNS} rows={ROWS} cells={eggPicture(e.props.isWorking, e.props.isWorking ? frame : Math.floor(frame / 2))} />
+          {picture(draw => eggPicture(e.props.isWorking, e.props.isWorking ? frame : Math.floor(frame / 2), draw), 'An egg')}
           <Box flexDirection="column" paddingLeft={2}>
             <Text bold>An egg!</Text>
             <Text dimColor>{line}</Text>
@@ -875,8 +1061,9 @@ export const register: Register = on => {
     const stageName = STAGES[stage]?.name ?? 'baby'
     const next_ = STAGES[stage + 1]
     const { face, floats } = pose(mood, frame, pet.isShiny || stageName === 'legend')
-    const rank = pet.isOnBoard ? (await read($, standing)).rank : null
-    const wearing = mood === 'fainted' ? null : rank === 1 ? 'champion' : pet.wearing
+    const stood = await read($, standing)
+    const rank = pet.isOnBoard ? stood.rank : pet.team ? stood.teamRank : null      // its place on the public board, or on its team if that is all it is on
+    const wearing = mood === 'fainted' ? null : pet.isOnBoard && stood.rank === 1 ? 'champion' : pet.wearing
     const coats = [...(pet.isShiny ? ['shiny'] : []), ...(mood === 'fainted' ? ['fainted'] : [])]
     const spoken = await read($, remark)
     const isRemark = now < spoken.until && mood !== 'fainted' && mood !== 'squeezing'      // something it said about your work, not a stock line
@@ -897,7 +1084,7 @@ export const register: Register = on => {
     return (
       <Box>
         <Box paddingTop={1}>
-          <Raster key="pet" columns={COLUMNS} rows={ROWS} cells={petPicture(pet.species, stageName, face, wearing, floats, coats)} />
+          {picture(draw => petPicture(pet.species, stageName, face, wearing, floats, coats, draw), `${pet.name}, ${a(`${stageName} ${pet.species}`)}, ${mood}`)}
         </Box>
         <Box flexDirection="column" paddingLeft={1}>
           <Text bold wrap="truncate">

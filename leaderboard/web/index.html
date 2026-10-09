@@ -106,7 +106,7 @@
 <div class="page">
   <header>
     <h1>VRAMa<span>gotchi</span> Board</h1>
-    <p class="lede">Pets that live in Claude Code and eat the tokens it writes. These are the best fed.</p>
+    <p class="lede" id="lede">Pets that live in Claude Code and eat the tokens it writes. These are the best fed.</p>
     <nav aria-label="On this page"><a href="#board">The board</a><a href="#what">What is it?</a><a href="#animals">Animals</a><a href="#grow">Growing up</a><a href="#collect">Things to collect</a><a href="#get">Get a pet</a></nav>
     <p class="note" id="note" hidden><b>Example pets.</b> The board is not open yet, so these ten are made up to show how it will look.</p>
   </header>
@@ -153,6 +153,8 @@
     <div class="cmd"><code id="install">/plugin install vramagotchi --marketplace toyotaguy95/vramagotchi</code><button type="button" data-copy="install">Copy</button></div>
     <p>Then put it on this board. Nothing is sent until you do this.</p>
     <div class="cmd"><code id="join">/pet board join</code><button type="button" data-copy="join">Copy</button></div>
+    <p id="team-how">Want a board for just your team or company? Start one, then send your teammates the code it gives you.</p>
+    <div class="cmd"><code id="team">/pet team new acme</code><button type="button" data-copy="team">Copy</button></div>
   </section>
 
   <section class="rules">
@@ -162,6 +164,8 @@
       <li><b>A belly holds one day of food.</b> A pet's score grows by at most 1M tokens a day, however much it claims to have eaten.</li>
       <li><b>The board keeps its own count.</b> Days fed and streaks run on the board's clock, so they cannot be made up.</li>
       <li><b>Ties go to whoever joined first.</b> Feeding your pet every day beats everything else.</li>
+      <li><b>The board rolls the dice.</b> Whether a pet here is shiny, and what it finds while it eats, is decided by the board, not by the pet's own computer.</li>
+      <li><b>A team board is private.</b> Only people who have the team's code can see it or join it.</li>
       <li><b>First place wears the crown.</b> That is the whole prize. There is nothing here worth money.</li>
       <li><b>What a pet sends:</b> its name, how much it ate, and what it owns. Never your code or your prompts.</li>
     </ul>
@@ -288,7 +292,7 @@ async function load() {
     return show(EXAMPLES.map(([name, score, wearing, shiny, streak, days, species], i) => ({ rank: i + 1, name, species, score, stage: stageOf(score), wearing, shiny, streak, days })))
   }
   try {
-    const answer = await fetch(`${API}/board`)
+    const answer = await fetch(`${API}/board${TEAM ? `?team=${TEAM}` : ''}`)
     show((await answer.json()).pets)
   } catch {
     document.getElementById('rows').replaceChildren(el('li', 'empty', 'The board could not be reached. Try again in a minute.'))
@@ -301,6 +305,17 @@ document.querySelectorAll('[data-copy]').forEach(button => button.addEventListen
   catch { getSelection().selectAllChildren(code); button.textContent = 'Selected' }
   setTimeout(() => { button.textContent = 'Copy' }, 1600)
 }))
+
+// A team's own board: the same page, opened with ?team= and the team's code.
+const TEAM = (/^[a-z0-9]{1,12}-[a-z0-9]{8}$/.exec(new URLSearchParams(location.search).get('team') || '') || [''])[0]
+if (TEAM) {
+  const name = TEAM.slice(0, TEAM.lastIndexOf('-'))
+  document.title = `Team ${name} · VRAMagotchi`
+  document.getElementById('lede').textContent = `Team ${name}'s pets. Only people with this link can see this board.`
+  document.getElementById('rest-title').textContent = `The rest of team ${name}`
+  document.getElementById('team-how').textContent = 'To put your pet on this team, type this inside Claude Code.'
+  document.getElementById('team').textContent = `/pet team join ${TEAM}`
+}
 
 load()
 if (API) setInterval(load, 60_000)

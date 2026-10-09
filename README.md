@@ -1,6 +1,7 @@
 # VRAMagotchi
 
-A pixel pet that eats tokens. It lives above your prompt in Claude Code, or on your own GPU.
+A pixel pet that eats tokens. It lives above your prompt in Claude Code (the terminal and the desktop app),
+or on your own GPU.
 
 ![The ten animals a pet can be](docs/animals.png)
 
@@ -94,6 +95,14 @@ A board of the best-fed pets, with a crown for first place. Your pet only appear
 `/pet board join`. The code is in [`leaderboard/`](leaderboard/), including how it keeps made-up numbers
 from winning. It is not live yet.
 
+Once a pet is on the board, the board rolls its luck: whether it is shiny and what it finds while it eats.
+
+### Team boards (coming with the leaderboard)
+
+A board for just your team or company. `/pet team new acme` starts one and gives you a code like
+`acme-k3x9q2ab`. Teammates type `/pet team join acme-k3x9q2ab`. Only people who have the code can see the
+team's board or join it, and a pet can be on its team without being on the public board.
+
 ## Commands
 
 | Type | What happens |
@@ -107,6 +116,7 @@ from winning. It is not live yet.
 | `/pet attitude <sweet, cheeky or roast>` | how it talks |
 | `/pet hide` · `/pet show` | hides it and brings it back |
 | `/pet board` · `/pet board join` · `/pet board leave` | the leaderboard, once it is open |
+| `/pet team` · `/pet team new <name>` · `/pet team join <code>` · `/pet team leave` | a private board for your team |
 
 Next to the pet there are also Pet, Wearing and Hide buttons.
 
@@ -117,7 +127,9 @@ Nothing, unless you ask for it.
 - The pet's name, tokens, items and settings are a file on your computer.
 - With `/pet talk on`, your question and the end of Claude's answer go to the fast model on your own account,
   the same place your conversation already goes.
-- With `/pet board join`, the board gets the pet's name, animal, token count and items. Never code or prompts.
+- With `/pet board join` or a team, the board gets the pet's name, animal, token count and items. Never code
+  or prompts. To limit how many pets one network can add in a day, it keeps a scrambled form of your network
+  address for two days, and nothing else about you.
 
 ## The GPU pets
 

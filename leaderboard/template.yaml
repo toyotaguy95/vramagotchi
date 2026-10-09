@@ -13,12 +13,17 @@ Parameters:
     Type: Number
     Default: 5
     Description: The most requests the API accepts each second. Anything over this is turned away and costs nothing.
+  JoinsPerNetwork:
+    Type: Number
+    Default: 20
+    Description: How many new pets one network (a home, an office) may hatch on the board in a day.
 
 Conditions:
   HasAlertEmail: !Not [!Equals [!Ref AlertEmail, '']]
 
 Resources:
-  # One row per pet. The "board" index keeps every pet sorted by its place, so the top 100 is one cheap read.
+  # One row per pet. The "board" index keeps every public pet sorted by its place, so the top 100 is one cheap read.
+  # The "team" index does the same for each team. Counters of new pets per network clean themselves up.
   Pets:
     Type: AWS::DynamoDB::Table
     Properties:
@@ -26,6 +31,7 @@ Resources:
       AttributeDefinitions:
         - { AttributeName: id, AttributeType: S }
         - { AttributeName: board, AttributeType: S }
+        - { AttributeName: team, AttributeType: S }
         - { AttributeName: place, AttributeType: N }
       KeySchema:
         - { AttributeName: id, KeyType: HASH }
@@ -35,6 +41,12 @@ Resources:
             - { AttributeName: board, KeyType: HASH }
             - { AttributeName: place, KeyType: RANGE }
           Projection: { ProjectionType: ALL }
+        - IndexName: team
+          KeySchema:
+            - { AttributeName: team, KeyType: HASH }
+            - { AttributeName: place, KeyType: RANGE }
+          Projection: { ProjectionType: ALL }
+      TimeToLiveSpecification: { AttributeName: expires, Enabled: true }
       PointInTimeRecoverySpecification: { PointInTimeRecoveryEnabled: true }
 
   # The speed limit lives here. It is what keeps a flood of requests from becoming a bill.
@@ -57,7 +69,10 @@ Resources:
       MemorySize: 256
       Timeout: 5
       Environment:
-        Variables: { TABLE: !Ref Pets }
+        Variables:
+          TABLE: !Ref Pets
+          JOINS_PER_NETWORK: !Ref JoinsPerNetwork
+          PEPPER: !Ref AWS::StackId          # mixed into the scrambled network names, so they cannot be worked back to an address
       Policies:
         - DynamoDBCrudPolicy: { TableName: !Ref Pets }     # this table and nothing else
       Events:
