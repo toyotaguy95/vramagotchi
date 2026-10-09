@@ -23,7 +23,7 @@ export type Save = {
   boardKey: string
   /** Whether it remarks on the owner's work after a turn. Off unless the owner turns it on. */
   talks: boolean
-  /** How it talks: sweet, cheeky or rude. */
+  /** How it talks: sweet, cheeky or roast. */
   attitude: string
 }
 

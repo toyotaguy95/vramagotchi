@@ -205,7 +205,7 @@ class World:
         pet = self.pick(uuid)
         if pet and not pet.egg:
             kind = pet.next_attitude()
-            pet.say({"sweet": "I'll be sweet", "cheeky": "I'll be cheeky", "rude": "fine. I'll be rude"}[kind] + " when you feed me", 3, time.time())
+            pet.say({"sweet": "I'll be sweet", "cheeky": "I'll be cheeky", "roast": "fine. I'll roast you"}[kind] + " when you feed me", 3, time.time())
 
     def dress(self, uuid=None, item="next"):
         pet = self.pick(uuid)

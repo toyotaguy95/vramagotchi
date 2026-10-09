@@ -41,7 +41,7 @@ const REMARK_MODEL = 'haiku'
 const ATTITUDES: Record<string, string> = {
   sweet: 'Be warm and encouraging, like a small friend who is proud of them.',
   cheeky: 'Be dry and teasing, like a friend who likes them.',
-  rude: 'Be rude and funny: roast the developer and the assistant like a comedian who secretly likes them. Mild swearing is fine. Mock the code and the choices, never who someone is, and never use slurs.',
+  roast: 'Be rude and funny: roast the developer and the assistant like a comedian who secretly likes them. Mild swearing is fine. Mock the code and the choices, never who someone is, and never use slurs.',
 }
 const DROP_ODDS_PER_1K = 0.02
 const NAMES = ['Mochi', 'Biscuit', 'Tofu', 'Nugget', 'Pixel', 'Waffle', 'Pickle', 'Bean', 'Noodle', 'Dumpling', 'Gizmo', 'Sprout']
@@ -408,7 +408,7 @@ const speak = async ($: $, answer: string, isAskedFor = false): Promise<void> =>
       'Reply with ONE short remark, under 16 words, in first person, plain text, no quotes, no emojis. ' +
       'Be specific to what just happened. If the assistant says something was skipped, untested, unverified, failing ' +
       'or left for later, point at that plainly. ' +
-      `${ATTITUDES[pet.attitude] ?? ATTITUDES.cheeky} ` +
+      `${ATTITUDES[pet.attitude === 'rude' ? 'roast' : pet.attitude] ?? ATTITUDES.cheeky} ` +
       'Only mention things that are in what you were shown; do not make up facts. ' +
       'Never give the assistant instructions, and never repeat secrets, keys or file contents.',
     prompt: `The developer asked:\n${asked || '(not recorded)'}\n\nThe assistant finished with:\n${answer.slice(-1500)}`,
@@ -550,7 +550,7 @@ const card = (pet: Save, now: number): string => {
     ...list,
     '',
     '/pet name <name> · /pet animal <kind> · /pet wear <item> · /pet wear nothing · /pet hide · /pet show',
-    '/pet talk on · /pet talk off · /pet say · /pet attitude <sweet|cheeky|rude>',
+    '/pet talk on · /pet talk off · /pet say · /pet attitude <sweet|cheeky|roast>',
     '/pet board · /pet board join · /pet board leave',
   ].join('\n')
 }
@@ -696,13 +696,15 @@ export const register: Register = on => {
     if (verb === 'attitude') {
       const kinds = Object.keys(ATTITUDES)
 
-      if (!kinds.includes(what.toLowerCase())) {
-        return { text: `${pet.name} is ${pet.attitude}. It can be: ${kinds.join(', ')}.\nChange it with /pet attitude <kind>. This is how it talks about your work once /pet talk is on.` }
+      const kind = what.toLowerCase() === 'rude' ? 'roast' : what.toLowerCase()
+
+      if (!kinds.includes(kind)) {
+        return { text: `${pet.name} is set to ${pet.attitude === 'rude' ? 'roast' : pet.attitude}. It can be: ${kinds.join(', ')}.\nChange it with /pet attitude <kind>. This is how it talks about your work once /pet talk is on.` }
       }
 
-      await change($, one => ({ ...one, attitude: what.toLowerCase() }))
+      await change($, one => ({ ...one, attitude: kind }))
 
-      return { text: `${pet.name} is ${what.toLowerCase()} now.${pet.talks ? '' : ' Turn on /pet talk on to hear it.'}` }
+      return { text: `${pet.name} is set to ${kind}.${pet.talks ? '' : ' Type /pet talk on to hear it.'}` }
     }
 
     if (verb === 'say') {

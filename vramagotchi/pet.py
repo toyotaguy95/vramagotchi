@@ -13,7 +13,7 @@ SPECIES_COLOR = {"duck": (255, 214, 92), "cactus": (124, 200, 108), "ghost": (23
 ATTITUDES = {
     "sweet": "Be warm and sweet.",
     "cheeky": "Be dry and teasing, like a friend.",
-    "rude": "Be rude and funny, like a comedian who secretly likes their owner. Mild swearing is fine. No slurs.",
+    "roast": "Be rude and funny, like a comedian who secretly likes their owner. Mild swearing is fine. No slurs.",
 }
 NAMES = ["Mochi", "Biscuit", "Tofu", "Nugget", "Pixel", "Waffle", "Pickle", "Bean", "Noodle", "Dumpling", "Gizmo", "Sprout"]
 
@@ -78,7 +78,8 @@ class Pet:
         self.color_index = saved.get("color", slot) % len(COLORS)
         self.species_index = saved.get("species", slot if unlock_all else random.randrange(len(SPECIES))) % len(SPECIES)
         self.species = SPECIES[self.species_index]
-        self.attitude = saved.get("attitude") if saved.get("attitude") in ATTITUDES else "cheeky"
+        self.attitude = {"rude": "roast"}.get(saved.get("attitude"), saved.get("attitude"))      # "rude" is the old name
+        self.attitude = self.attitude if self.attitude in ATTITUDES else "cheeky"
         self.color = self._coat()
         self.born = saved.get("born", now)
         self.tokens_total = saved.get("tokens_total", 0.0)
