@@ -61,7 +61,9 @@ const ATTITUDES: Record<string, string> = {
   cheeky: 'Be dry and teasing, like a friend who likes them.',
   roast: 'Be rude and funny: roast the developer and the assistant like a comedian who secretly likes them. Mild swearing is fine. Mock the code and the choices, never who someone is, and never use slurs.',
 }
-const DROP_ODDS_PER_1K = 0.02
+const DROP_ODDS_PER_1K = 0.005      // a find about every 200k tokens
+const LEGENDARY_ODDS = 0.01         // of those finds, one in a hundred is legendary: about once in 20M tokens
+const RARE_ODDS = 0.12              // and about one in eight is rare
 const NAMES = ['Mochi', 'Biscuit', 'Tofu', 'Nugget', 'Pixel', 'Waffle', 'Pickle', 'Bean', 'Noodle', 'Dumpling', 'Gizmo', 'Sprout']
 
 // A pet grows up as it eats. `at` is how many tokens it has eaten in its whole life.
@@ -409,7 +411,7 @@ const find = (pet: Save, turn: number): Item | undefined => {
   }
 
   const roll = Math.random()
-  const rarity = roll < 0.03 ? 'legendary' : roll < 0.25 ? 'rare' : 'common'
+  const rarity = roll < LEGENDARY_ODDS ? 'legendary' : roll < LEGENDARY_ODDS + RARE_ODDS ? 'rare' : 'common'
 
   return pick(ITEMS.filter(item => item.rarity === rarity && !pet.items.includes(item.id)))
 }
@@ -1272,9 +1274,6 @@ const drawPet = async ($: $, e: Site, isWorking: boolean, columns: number, isWin
               onPress={() => change($, one => ({ ...one, wearing: nextOutfit }))}
             />
           )}
-          <Button key="play" label="Play memory" onPress={() => startGame($)} />
-          <Button key="catch" label="Play catch" onPress={() => startCatch($)} />
-          <Button key="blackjack" label="Blackjack" onPress={() => startBlackjack($)} />
           {!isWindow && (
             <Button
               key="hide"

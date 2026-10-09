@@ -95,7 +95,7 @@ One egg in fifty hatches a shiny pet.
 - **Catch.** Tokens fall and you slide the pet under them. Three on the ground and the game is over.
 - **Blackjack.** You against the pet, who deals. Nothing is bet.
 
-Start one with `/pet play memory`, `/pet play catch` or `/pet play blackjack`, or the buttons beside the pet. Games are only for fun:
+Start one with `/pet play memory`, `/pet play catch` or `/pet play blackjack`. Games are only for fun:
 they never change what your pet has eaten, its growth, or its place on the board.
 
 ### A public leaderboard (coming)
@@ -129,7 +129,7 @@ team's board or join it, and a pet can be on its team without being on the publi
 | `/pet board` · `/pet board join` · `/pet board leave` | the leaderboard, once it is open |
 | `/pet team` · `/pet team new <name>` · `/pet team join <code>` · `/pet team leave` | a private board for your team |
 
-Next to the pet there are also Pet, Wearing, Play and Hide buttons.
+Next to the pet there are also Pet, Wearing and Hide buttons.
 
 ### Where it shows up
 

@@ -35,7 +35,8 @@ STAGES = (("baby", 0), ("kid", 25_000), ("teen", 250_000), ("adult", 2_500_000),
 MILESTONES = {"headphones": 10_000, "wizard": 100_000, "crown": 1_000_000, "tophat": 10_000_000}
 DEEDS = {"bandage", "sweatband", "bow"}      # small things only the pet's own computer can know; taken on its word
 FINDS = {"common": ("flower", "sprout"), "rare": ("propeller", "halo"), "legendary": ("star",)}
-FIND_ODDS = 0.02              # the chance of a lucky find for each thousand tokens eaten on the board
+FIND_ODDS = 0.005             # the chance of a lucky find for each thousand tokens eaten: one about every 200k tokens
+LEGENDARY, RARE = 0.01, 0.12  # of those finds, one in a hundred is legendary (about once in 20M tokens) and one in eight is rare
 SHINY_ODDS = 1 / 50
 STREAK_FOR_FLAME = 7
 SPECIES = {"blob", "cat", "bunny", "duck", "cactus", "ghost", "robot", "mushroom", "axolotl", "dragon"}
@@ -175,7 +176,7 @@ def lucky(row, eaten):
     for _ in range(rolls):
         if luck.random() < FIND_ODDS:
             roll = luck.random()
-            left = [item for item in FINDS["legendary" if roll < 0.03 else "rare" if roll < 0.25 else "common"] if item not in have]
+            left = [item for item in FINDS["legendary" if roll < LEGENDARY else "rare" if roll < LEGENDARY + RARE else "common"] if item not in have]
             if left:
                 new.append(luck.choice(left))
                 have.append(new[-1])

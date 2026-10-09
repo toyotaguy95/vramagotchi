@@ -144,14 +144,14 @@ class Board(unittest.TestCase):
         handler.luck = Dice(0.001)                                                  # the roll at hatching: shiny
         out = call("POST", "/pets", pet(lifetime=200_000))[1]
         self.assertEqual((out["shiny"], out["items"], out["found"]), (True, ["headphones", "wizard"], []))     # hats for what it ate; no dice for the head start
-        handler.luck = Dice(0.5, 0.01, 0.01, 0.5, 0.01, 0.9)                        # 3,500 tokens: three rolls, the second finds the star
+        handler.luck = Dice(0.5, 0.001, 0.001, 0.5, 0.001, 0.9)                        # 3,500 tokens: three rolls, the second finds the star
         out = call("POST", "/pets", pet(lifetime=203_500), now=1_000_100)[1]
         self.assertEqual((out["found"], out["items"]), (["star"], ["headphones", "star", "wizard"]))
-        handler.luck = Dice(0.01, 0.9)                                              # 500 more make up the next thousand with the 500 left over
+        handler.luck = Dice(0.001, 0.9)                                            # 500 more make up the next thousand with the 500 left over
         out = call("POST", "/pets", pet(lifetime=204_000, wearing="star"), now=1_000_200)[1]
         self.assertEqual(out["found"], ["flower"])
         self.assertEqual(call("GET", "/board", query={"id": A})[1]["you"]["wearing"], "star")
-        handler.luck = Dice(*[0.01, 0.9] * 50)                                      # tokens the belly turns away roll nothing
+        handler.luck = Dice(*[0.001, 0.9] * 50)                                      # tokens the belly turns away roll nothing
         out = call("POST", "/pets", pet(lifetime=10 ** 12), now=1_000_300)[1]
         self.assertEqual((out["found"], handler.luck.rolls), (["sprout"], []))      # it found the one common thing left, once
 
