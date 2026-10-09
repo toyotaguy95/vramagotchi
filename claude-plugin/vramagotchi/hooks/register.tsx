@@ -59,7 +59,7 @@ const REMARK_MODEL = 'haiku'
 const ATTITUDES: Record<string, string> = {
   sweet: 'Be warm and encouraging, like a small friend who is proud of them.',
   cheeky: 'Be dry and teasing, like a friend who likes them.',
-  roast: 'Be rude and funny: roast the developer and the assistant like a comedian who secretly likes them. Mild swearing is fine. Mock the code and the choices, never who someone is, and never use slurs.',
+  roast: 'Be brutally rude, crude and funny: a deadpan roast comic who thinks this work is embarrassing and says so. Swear freely. Go for the throat on the code, the lazy choices, the developer\'s skill and the assistant\'s excuses, with a specific insult, not a general one. No compliments, no softening, no "but good job". Never use slurs, never joke about race, sex, religion, disability or looks, and nothing sexual.',
 }
 const DROP_ODDS_PER_1K = 0.005      // a find about every 200k tokens
 const LEGENDARY_ODDS = 0.01         // of those finds, one in a hundred is legendary: about once in 20M tokens

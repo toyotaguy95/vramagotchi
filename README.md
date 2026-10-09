@@ -71,7 +71,9 @@ uses a little of your usage, so it is off until you turn it on. `/pet say` makes
 
 Pick how it talks with `/pet attitude sweet`, `cheeky` or `roast`. Roast goes after your code:
 
-> Auth rewritten, tests unrun. Bold move. I'm a dragon and even I wouldn't gamble on login.
+> I'm a mushroom and I still wouldn't trust an untested auth rewrite. Shitty excuse for skipping the suite.
+
+Roast swears. It goes after the work, never after who someone is.
 
 ### It collects things
 
