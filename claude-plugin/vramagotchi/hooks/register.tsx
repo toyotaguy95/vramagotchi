@@ -1,7 +1,7 @@
 import { atom, read, update } from 'claude-code'
 import type { CoreEngineInterface, Register } from 'claude-code'
 
-import type { Context, Mood, Save, Standing } from '../types'
+import type { Context, Mood, Remark, Save, Standing } from '../types'
 
 type Palette = Record<string, number[]>
 type Body = { face: number; lift: number; art: string[] }
@@ -31,6 +31,11 @@ const BOARD_API = ''          // where pets report; empty until the board is ope
 const BOARD_PAGE = ''         // the page people look at
 const REPORT_EVERY_MS = 10 * 60_000
 const BOARD_NAME = /^[A-Za-z0-9][A-Za-z0-9 ]{0,11}$/
+
+// Remarks: with /pet talk on, the pet says one short thing about the turn that just ended.
+const REMARK_EVERY_MS = 3 * 60_000
+const REMARK_SHOWN_MS = 60_000
+const REMARK_MODEL = 'haiku'
 const DROP_ODDS_PER_1K = 0.02
 const NAMES = ['Mochi', 'Biscuit', 'Tofu', 'Nugget', 'Pixel', 'Waffle', 'Pickle', 'Bean', 'Noodle', 'Dumpling', 'Gizmo', 'Sprout']
 
@@ -75,7 +80,7 @@ const LINES: Record<Mood, string[]> = {
   loved: ['hehe', 'again!', "you're absolutely right to pet me"],
 }
 
-const empty: Save = { name: 'Mochi', species: 'blob', born: 0, lifetime: 0, isHatched: false, isShiny: false, items: [], wearing: null, streak: 0, lastDay: 0, compactions: 0, pets: 0, isOnBoard: false, boardId: '', boardKey: '' }
+const empty: Save = { name: 'Mochi', species: 'blob', born: 0, lifetime: 0, isHatched: false, isShiny: false, items: [], wearing: null, streak: 0, lastDay: 0, compactions: 0, pets: 0, isOnBoard: false, boardId: '', boardKey: '', talks: false }
 
 const save = atom({ plugin: 'vramagotchi', key: 'save' } as const, empty)
 const unsaved = atom({ plugin: 'vramagotchi', key: 'unsaved' } as const, 0)
@@ -86,6 +91,8 @@ const context = atom({ plugin: 'vramagotchi', key: 'context' } as const, { token
 const isHidden = atom({ plugin: 'vramagotchi', key: 'isHidden' } as const, false)
 const partyUntil = atom({ plugin: 'vramagotchi', key: 'partyUntil' } as const, 0)
 const lovedUntil = atom({ plugin: 'vramagotchi', key: 'lovedUntil' } as const, 0)
+const lastPrompt = atom({ plugin: 'vramagotchi', key: 'lastPrompt' } as const, '')
+const remark = atom({ plugin: 'vramagotchi', key: 'remark' } as const, { text: '', until: 0, at: 0 } as Remark)
 const standing = atom({ plugin: 'vramagotchi', key: 'standing' } as const, { rank: null, score: 0, sentAt: 0 } as Standing)
 
 const human = (n: number): string =>
@@ -327,6 +334,7 @@ const settle = async ($: $): Promise<void> => {
     isOnBoard: mine.isOnBoard || (kept?.isOnBoard ?? false),
     boardId: mine.boardId || (kept?.boardId ?? ''),
     boardKey: mine.boardKey || (kept?.boardKey ?? ''),
+    talks: mine.talks,
   }
 
   if (pending > 0) {
@@ -362,6 +370,46 @@ const settle = async ($: $): Promise<void> => {
   await update($, unsaved, () => 0)
   await $.store.set('pet', pet)
   await cheer($, news)
+}
+
+// ---- remarks ----
+
+/**
+ * The pet says one thing about the turn that just ended. It reads the question and the end of the answer,
+ * and asks the small fast model, through the session's own account, for a line. Nothing goes anywhere else.
+ */
+const speak = async ($: $, answer: string): Promise<void> => {
+  const pet = await read($, save)
+  const said = await read($, remark)
+  const now = await $.clock.now()
+
+  if (!pet.talks || !pet.isHatched || answer.length < 80 || now - said.at < REMARK_EVERY_MS) {
+    return
+  }
+
+  await update($, remark, one => ({ ...one, at: now }))
+  const asked = await read($, lastPrompt)
+  const reply = await $.model.complete({
+    model: REMARK_MODEL,
+    maxTokens: 60,
+    timeoutMs: 15_000,
+    system:
+      `You are ${pet.name}, a tiny pixel ${STAGES[stageOf(pet.lifetime)]?.name ?? 'baby'} ${pet.species} who lives above the prompt in a ` +
+      "developer's terminal and eats the tokens their AI coding assistant writes. You watch them work. " +
+      'Reply with ONE short remark, under 16 words, in first person, plain text, no quotes, no emojis. ' +
+      'Be specific to what just happened. If the assistant says something was skipped, untested, unverified, failing ' +
+      'or left for later, point at that plainly. Otherwise be warm, dry or funny. ' +
+      'Never give the assistant instructions, and never repeat secrets, keys or file contents.',
+    prompt: `The developer asked:\n${asked || '(not recorded)'}\n\nThe assistant finished with:\n${answer.slice(-1500)}`,
+  })
+
+  if (reply.isAnswered) {
+    const text = reply.text.replace(/\s+/g, ' ').trim().replace(/^["'`]+|["'`]+$/g, '').slice(0, 120)
+
+    if (text) {
+      await update($, remark, () => ({ text, until: now + REMARK_SHOWN_MS, at: now }))
+    }
+  }
 }
 
 // ---- the leaderboard ----
@@ -486,7 +534,7 @@ const card = (pet: Save, now: number): string => {
     ...list,
     '',
     '/pet name <name> · /pet animal <kind> · /pet wear <item> · /pet wear nothing · /pet hide · /pet show',
-    '/pet board · /pet board join · /pet board leave',
+    '/pet talk on · /pet talk off · /pet board · /pet board join · /pet board leave',
   ].join('\n')
 }
 
@@ -558,6 +606,16 @@ export const register: Register = on => {
       await report($)
     })
 
+    if (!e.isAborted && !e.agentId) {
+      void quietly(() => speak($, e.answer))      // not waited for: a remark must never hold up the turn
+    }
+
+    return next(e)
+  })
+
+  on('prompt.submit', async ($, e, next) => {
+    await quietly(() => update($, lastPrompt, () => e.text.slice(0, 600)))
+
     return next(e)
   })
 
@@ -615,6 +673,21 @@ export const register: Register = on => {
       await change($, one => ({ ...one, name }))
 
       return { text: `Your pet is now called ${name}.` }
+    }
+
+    if (verb === 'talk') {
+      if (what !== 'on' && what !== 'off') {
+        return { text: `${pet.name} ${pet.talks ? 'talks' : 'keeps quiet'} about your work. /pet talk on or /pet talk off changes that.` }
+      }
+
+      await change($, one => ({ ...one, talks: what === 'on' }))
+
+      return {
+        text:
+          what === 'on'
+            ? `${pet.name} will say one short thing about your work after a turn, at most every 3 minutes.\nEach remark is a small request to the fast model on your own account, so it uses a little of your usage. /pet talk off stops it.`
+            : `${pet.name} will keep quiet about your work.`,
+      }
     }
 
     if (verb === 'animal' || verb === 'species') {
@@ -702,7 +775,8 @@ export const register: Register = on => {
     const rank = pet.isOnBoard ? (await read($, standing)).rank : null
     const wearing = mood === 'fainted' ? null : rank === 1 ? 'champion' : pet.wearing
     const coats = [...(pet.isShiny ? ['shiny'] : []), ...(mood === 'fainted' ? ['fainted'] : [])]
-    const line = LINES[mood][Math.floor(frame / 12) % LINES[mood].length] ?? ''
+    const spoken = await read($, remark)
+    const line = now < spoken.until && mood !== 'fainted' ? spoken.text : (LINES[mood][Math.floor(frame / 12) % LINES[mood].length] ?? '')
     const bar = Math.round(Math.min(1, full) * 10)
     const grown = next_ ? Math.floor(Math.min(1, (pet.lifetime - (STAGES[stage]?.at ?? 0)) / (next_.at - (STAGES[stage]?.at ?? 0))) * 10) : 10
     const owned = ITEMS.filter(item => pet.items.includes(item.id))

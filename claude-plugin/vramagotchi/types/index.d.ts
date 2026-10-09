@@ -21,7 +21,12 @@ export type Save = {
   isOnBoard: boolean
   boardId: string
   boardKey: string
+  /** Whether it remarks on the owner's work after a turn. Off unless the owner turns it on. */
+  talks: boolean
 }
+
+/** The last thing the pet said about a turn: the line, until when it shows, and when it was asked for. */
+export type Remark = { text: string; until: number; at: number }
 
 /** Where the pet stands on the leaderboard, as the board last said. */
 export type Standing = { rank: number | null; score: number; sentAt: number }
@@ -39,6 +44,8 @@ declare module 'claude-code' {
       partyUntil: number
       lovedUntil: number
       standing: Standing
+      lastPrompt: string
+      remark: Remark
     }
   }
 }

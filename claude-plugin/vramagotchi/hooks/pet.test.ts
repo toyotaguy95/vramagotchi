@@ -104,3 +104,61 @@ test('nothing reaches the leaderboard until the owner joins, and then only the p
   await turn()
   expect(sent.length).toBe(3)
 })
+
+test('the pet only remarks on a turn once its owner turns that on', async ($, on) => {
+  const clock = mock.clock(on, { now: 1_700_000_000_000 })
+  const kept: Record<string, unknown> = {}
+  const asked: { system?: string; prompt: string; model: string }[] = []
+  on('store.get', (_, e) => ({ value: kept[e.key] }) as never)
+  on('store.set', (_, e) => {
+    kept[e.key] = e.value
+
+    return { value: undefined } as never
+  })
+  on('model.complete', (_, e) => {
+    asked.push((e as unknown as { request: { system?: string; prompt: string; model: string } }).request ?? (e as never))
+
+    return { value: { isAnswered: true, text: '"Nobody ran the tests, did they?"', usage: {} } } as never
+  })
+  on('session.usage', () => ({ value: { startedAt: 0, context: { tokens: 50_000, window: 200_000 }, rateLimits: [] } }) as never)
+  on('turn.step', async function* (_, e) {
+    return { turnId: e.turnId, index: e.index, answer: 'ok', toolUses: [], usage: { input_tokens: 10, output_tokens: 900 } } as never
+  })
+  on('session.start', (_, e) => e as never)
+  on('turn.complete', () => ({ text: 'ok' }) as never)
+  on('command.register', () => ({ value: undefined }) as never)
+  on('ui.toast', () => ({ value: undefined }) as never)
+  const answer = 'I rewrote the parser and updated three call sites. I did not run the test suite, so that is still to do.'
+  const turn = async () => {
+    for await (const _ of $.turn.step({ turnId: 't1', index: 0, model: 'test', messageCount: 1 })) {
+      // the pet eats
+    }
+    await $.turn.complete({ answer, durationMs: 1, isAborted: false, turnId: 't1', reason: 'answer' } as never)
+    await new Promise(done => setTimeout(done, 40))      // the remark is not waited for by the turn, so give it a moment
+  }
+  const band = () => $.ui.mount({ plugin: 'vramagotchi', surface: 'terminal', component: 'AbovePrompt', props: { hasSurvey: false, isWorking: false } } as never)
+
+  await $.session.start({ cwd: '/tmp', surface: 'terminal', isInteractive: true })
+  await turn()
+  expect(asked).toEqual([])
+
+  await $.command.run({ command: 'pet', args: 'talk on' } as never)
+  await clock.advance(10_000)
+  await turn()
+  expect(asked.length).toBe(1)
+  expect(asked[0]?.prompt).toContain('did not run the test suite')
+  expect(await (await band()).find({ type: 'Text', text: /Nobody ran the tests, did they\?/ })).toBeTruthy()
+
+  await clock.advance(30_000)
+  await turn()
+  expect(asked.length).toBe(1)
+
+  await clock.advance(4 * 60_000)
+  await turn()
+  expect(asked.length).toBe(2)
+
+  await $.command.run({ command: 'pet', args: 'talk off' } as never)
+  await clock.advance(4 * 60_000)
+  await turn()
+  expect(asked.length).toBe(2)
+})

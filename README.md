@@ -49,16 +49,29 @@ pass `--llm URL`). Without one the pets still react to load, memory and heat.
 
 ## A pet inside Claude Code
 
-No GPU needed. This one lives above your prompt in Claude Code and eats the tokens Claude writes. Inside
+Miss `/buddy`? This one is open source and saved on your own computer, so no update can take it away.
+
+No GPU needed. It lives above your prompt in Claude Code and eats the tokens Claude writes. Inside
 Claude Code, type:
 
 ```
 /plugin install vramagotchi --marketplace toyotaguy95/vramagotchi
 ```
 
-Answer `y`, then press Enter. You get an egg, and your next prompt hatches it. It grows up and collects
-things the same way the GPU pets do, gets stuffed as the context window fills, and remembers everything
-between sessions. `/pet` shows its age, growth and collection. Nothing is sent anywhere.
+Answer `y`, then press Enter. You get an egg, and your next prompt hatches it.
+
+- **Ten animals.** Blob, cat, bunny, duck, cactus, ghost, robot, mushroom, axolotl or dragon. The egg picks one,
+  and `/pet animal duck` changes it.
+- **It grows.** Baby, kid, teen, adult, legend, by how many tokens it has eaten in its life.
+- **It collects things.** Hats for milestones and deeds, and rare finds while it eats.
+- **It can talk about your work.** `/pet talk on` and it says one short thing after a turn, like noticing that
+  nobody ran the tests. Each remark is a small request to the fast model on your own account, so this is off
+  until you turn it on.
+- **It reacts.** It naps when you stop, gets stuffed as the context window fills, and faints when it runs out.
+- **A public leaderboard** is on the way. A pet only ever appears there if you type `/pet board join`.
+
+`/pet` shows its age, growth and collection, and lists every command. Nothing leaves your computer unless you
+join the board.
 
 The GPU program can show a Claude Code pet too: press `n` to hatch one. It reads the records Claude Code
 already keeps on your computer. `--no-claude` turns the offer off.
