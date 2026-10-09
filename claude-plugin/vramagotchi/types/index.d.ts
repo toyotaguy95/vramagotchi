@@ -26,7 +26,7 @@ export type Save = {
 }
 
 /** The last thing the pet said about a turn: the line, until when it shows, and when it was asked for. */
-export type Remark = { text: string; until: number; at: number }
+export type Remark = { text: string; until: number; at: number; problem: string }
 
 /** Where the pet stands on the leaderboard, as the board last said. */
 export type Standing = { rank: number | null; score: number; sentAt: number }
@@ -46,6 +46,7 @@ declare module 'claude-code' {
       standing: Standing
       lastPrompt: string
       remark: Remark
+      lastAnswer: string
     }
   }
 }

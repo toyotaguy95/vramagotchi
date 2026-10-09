@@ -2,7 +2,9 @@ import { expect, mock, test } from 'claude-code/testing'
 
 import type { Save } from '../types'
 
-const BAND = { plugin: 'vramagotchi', surface: 'terminal', component: 'AbovePrompt', props: { hasSurvey: false, isWorking: false } } as never
+declare const setTimeout: (run: (value?: unknown) => void, ms: number) => unknown
+
+const BAND = { plugin: 'vramagotchi', surface: 'terminal', component: 'AbovePrompt', props: { hasSurvey: false, isWorking: false, maxRows: 20, bodyColumns: 100 } } as never
 
 test('an egg hatches on its first meal, then the pet earns things and survives a compaction', async ($, on) => {
   const clock = mock.clock(on, { now: 1_700_000_000_000 })
@@ -40,11 +42,11 @@ test('an egg hatches on its first meal, then the pet earns things and survives a
   await clock.advance(10_000)
   const band = await $.ui.mount(BAND)
   expect(await band.find({ type: 'Text', text: /baby \w+ · idle/ })).toBeTruthy()
-  expect(await band.find({ type: 'Text', text: /context ███░░░░░░░ 25%/ })).toBeTruthy()
+  expect(await band.find({ type: 'Text', text: /context ██░░░░ 25%/ })).toBeTruthy()
 
   await $.session.compact({ trigger: 'manual', messages: [{ role: 'user', text: 'hello', toolUses: [], toolResults: [] }] } as never)
   expect((kept.pet as Save).items).toContain('bandage')
-  expect(await (await $.ui.mount(BAND)).find({ type: 'Text', text: /context ░░░░░░░░░░ 4%/ })).toBeTruthy()
+  expect(await (await $.ui.mount(BAND)).find({ type: 'Text', text: /context ░░░░░░ 4%/ })).toBeTruthy()
 })
 
 test('nothing reaches the leaderboard until the owner joins, and then only the pet', async ($, on) => {
@@ -95,7 +97,7 @@ test('nothing reaches the leaderboard until the owner joins, and then only the p
   await turn()
   expect(sent.length).toBe(2)
   expect(sent[1]?.body.id).toBe(sent[0]?.body.id)
-  const band = await $.ui.mount({ plugin: 'vramagotchi', surface: 'terminal', component: 'AbovePrompt', props: { hasSurvey: false, isWorking: false } } as never)
+  const band = await $.ui.mount({ plugin: 'vramagotchi', surface: 'terminal', component: 'AbovePrompt', props: { hasSurvey: false, isWorking: false, maxRows: 20, bodyColumns: 100 } } as never)
   expect(await band.find({ type: 'Text', text: /#1/ })).toBeTruthy()
 
   await $.command.run({ command: 'pet', args: 'board leave' } as never)
@@ -136,7 +138,7 @@ test('the pet only remarks on a turn once its owner turns that on', async ($, on
     await $.turn.complete({ answer, durationMs: 1, isAborted: false, turnId: 't1', reason: 'answer' } as never)
     await new Promise(done => setTimeout(done, 40))      // the remark is not waited for by the turn, so give it a moment
   }
-  const band = () => $.ui.mount({ plugin: 'vramagotchi', surface: 'terminal', component: 'AbovePrompt', props: { hasSurvey: false, isWorking: false } } as never)
+  const band = () => $.ui.mount({ plugin: 'vramagotchi', surface: 'terminal', component: 'AbovePrompt', props: { hasSurvey: false, isWorking: false, maxRows: 20, bodyColumns: 100 } } as never)
 
   await $.session.start({ cwd: '/tmp', surface: 'terminal', isInteractive: true })
   await turn()

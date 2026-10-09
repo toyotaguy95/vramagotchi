@@ -34,7 +34,8 @@ const BOARD_NAME = /^[A-Za-z0-9][A-Za-z0-9 ]{0,11}$/
 
 // Remarks: with /pet talk on, the pet says one short thing about the turn that just ended.
 const REMARK_EVERY_MS = 3 * 60_000
-const REMARK_SHOWN_MS = 60_000
+const REMARK_SHOWN_MS = 3 * 60_000
+const SPEECH_COLOR = '#f08552'      // the bubble's edge when the pet is saying something about your work
 const REMARK_MODEL = 'haiku'
 const DROP_ODDS_PER_1K = 0.02
 const NAMES = ['Mochi', 'Biscuit', 'Tofu', 'Nugget', 'Pixel', 'Waffle', 'Pickle', 'Bean', 'Noodle', 'Dumpling', 'Gizmo', 'Sprout']
@@ -92,7 +93,8 @@ const isHidden = atom({ plugin: 'vramagotchi', key: 'isHidden' } as const, false
 const partyUntil = atom({ plugin: 'vramagotchi', key: 'partyUntil' } as const, 0)
 const lovedUntil = atom({ plugin: 'vramagotchi', key: 'lovedUntil' } as const, 0)
 const lastPrompt = atom({ plugin: 'vramagotchi', key: 'lastPrompt' } as const, '')
-const remark = atom({ plugin: 'vramagotchi', key: 'remark' } as const, { text: '', until: 0, at: 0 } as Remark)
+const remark = atom({ plugin: 'vramagotchi', key: 'remark' } as const, { text: '', until: 0, at: 0, problem: '' } as Remark)
+const lastAnswer = atom({ plugin: 'vramagotchi', key: 'lastAnswer' } as const, '')
 const standing = atom({ plugin: 'vramagotchi', key: 'standing' } as const, { rank: null, score: 0, sentAt: 0 } as Standing)
 
 const human = (n: number): string =>
@@ -378,12 +380,12 @@ const settle = async ($: $): Promise<void> => {
  * The pet says one thing about the turn that just ended. It reads the question and the end of the answer,
  * and asks the small fast model, through the session's own account, for a line. Nothing goes anywhere else.
  */
-const speak = async ($: $, answer: string): Promise<void> => {
+const speak = async ($: $, answer: string, isAskedFor = false): Promise<void> => {
   const pet = await read($, save)
   const said = await read($, remark)
   const now = await $.clock.now()
 
-  if (!pet.talks || !pet.isHatched || answer.length < 80 || now - said.at < REMARK_EVERY_MS) {
+  if (!pet.isHatched || (!isAskedFor && (!pet.talks || answer.length < 80 || now - said.at < REMARK_EVERY_MS))) {
     return
   }
 
@@ -407,9 +409,14 @@ const speak = async ($: $, answer: string): Promise<void> => {
     const text = reply.text.replace(/\s+/g, ' ').trim().replace(/^["'`]+|["'`]+$/g, '').slice(0, 120)
 
     if (text) {
-      await update($, remark, () => ({ text, until: now + REMARK_SHOWN_MS, at: now }))
+      await update($, remark, () => ({ text, until: now + REMARK_SHOWN_MS, at: now, problem: '' }))
+
+      return
     }
   }
+
+  const problem = reply.isAnswered ? 'an empty reply' : reply.reason === 'api-error' ? `the model refused (${reply.status ?? 'no status'})` : reply.reason
+  await update($, remark, one => ({ ...one, problem }))
 }
 
 // ---- the leaderboard ----
@@ -534,7 +541,7 @@ const card = (pet: Save, now: number): string => {
     ...list,
     '',
     '/pet name <name> · /pet animal <kind> · /pet wear <item> · /pet wear nothing · /pet hide · /pet show',
-    '/pet talk on · /pet talk off · /pet board · /pet board join · /pet board leave',
+    '/pet talk on · /pet talk off · /pet say · /pet board · /pet board join · /pet board leave',
   ].join('\n')
 }
 
@@ -607,6 +614,7 @@ export const register: Register = on => {
     })
 
     if (!e.isAborted && !e.agentId) {
+      await quietly(() => update($, lastAnswer, () => e.answer.slice(-1500)))
       void quietly(() => speak($, e.answer))      // not waited for: a remark must never hold up the turn
     }
 
@@ -675,9 +683,31 @@ export const register: Register = on => {
       return { text: `Your pet is now called ${name}.` }
     }
 
+    if (verb === 'say') {
+      const answer = await read($, lastAnswer)
+
+      if (!answer) {
+        return { text: `${pet.name} has nothing to talk about yet. Ask Claude something first.` }
+      }
+
+      await speak($, answer, true)
+      const said = await read($, remark)
+
+      return { text: said.problem ? `${pet.name} could not think of anything: ${said.problem}.` : `${pet.name}: ${said.text}` }
+    }
+
     if (verb === 'talk') {
       if (what !== 'on' && what !== 'off') {
-        return { text: `${pet.name} ${pet.talks ? 'talks' : 'keeps quiet'} about your work. /pet talk on or /pet talk off changes that.` }
+        const said = await read($, remark)
+
+        return {
+          text: [
+            `${pet.name} ${pet.talks ? 'talks' : 'keeps quiet'} about your work. /pet talk on or /pet talk off changes that.`,
+            said.text ? `Last thing it said: ${said.text}` : 'It has not said anything yet.',
+            ...(said.problem ? [`Its last try failed: ${said.problem}.`] : []),
+            '/pet say makes it speak about the last turn right now.',
+          ].join('\n'),
+        }
       }
 
       await change($, one => ({ ...one, talks: what === 'on' }))
@@ -685,7 +715,7 @@ export const register: Register = on => {
       return {
         text:
           what === 'on'
-            ? `${pet.name} will say one short thing about your work after a turn, at most every 3 minutes.\nEach remark is a small request to the fast model on your own account, so it uses a little of your usage. /pet talk off stops it.`
+            ? `${pet.name} will say one short thing about your work after a turn, at most every 3 minutes. It shows in the speech bubble beside it, with an orange edge.\nEach remark is a small request to the fast model on your own account, so it uses a little of your usage. /pet talk off stops it.`
             : `${pet.name} will keep quiet about your work.`,
       }
     }
@@ -776,34 +806,48 @@ export const register: Register = on => {
     const wearing = mood === 'fainted' ? null : rank === 1 ? 'champion' : pet.wearing
     const coats = [...(pet.isShiny ? ['shiny'] : []), ...(mood === 'fainted' ? ['fainted'] : [])]
     const spoken = await read($, remark)
-    const line = now < spoken.until && mood !== 'fainted' ? spoken.text : (LINES[mood][Math.floor(frame / 12) % LINES[mood].length] ?? '')
-    const bar = Math.round(Math.min(1, full) * 10)
-    const grown = next_ ? Math.floor(Math.min(1, (pet.lifetime - (STAGES[stage]?.at ?? 0)) / (next_.at - (STAGES[stage]?.at ?? 0))) * 10) : 10
+    const isRemark = now < spoken.until && mood !== 'fainted'      // something it said about your work, not a stock line
+    const line = isRemark ? spoken.text : (LINES[mood][Math.floor(frame / 12) % LINES[mood].length] ?? '')
     const owned = ITEMS.filter(item => pet.items.includes(item.id))
     const outfits = [null, ...owned.map(item => item.id)]
     const nextOutfit = outfits[(outfits.indexOf(pet.wearing) + 1) % outfits.length] ?? null
     const wornName = owned.find(item => item.id === pet.wearing)?.name
 
+    // The text beside the pet is seven rows: its name, a speech bubble of four, its numbers, its buttons.
+    // Nothing in it changes height, so the prompt underneath never jumps.
+    const room = Number.isFinite(e.props.bodyColumns) ? e.props.bodyColumns : 80
+    const bubbleWidth = Math.max(24, Math.min(64, room - COLUMNS - 6))
+    const cells = (part: number): string => '█'.repeat(Math.round(Math.min(1, part) * 6)).padEnd(6, '░')
+    const growing = next_ ? (pet.lifetime - (STAGES[stage]?.at ?? 0)) / (next_.at - (STAGES[stage]?.at ?? 0)) : 1
+
     return (
-      <Box paddingTop={1}>
-        <Raster key="pet" columns={COLUMNS} rows={ROWS} cells={petPicture(pet.species, stageName, face, wearing, floats, coats)} />
-        <Box flexDirection="column" paddingLeft={2}>
-          <Text bold>
+      <Box>
+        <Box paddingTop={1}>
+          <Raster key="pet" columns={COLUMNS} rows={ROWS} cells={petPicture(pet.species, stageName, face, wearing, floats, coats)} />
+        </Box>
+        <Box flexDirection="column" paddingLeft={1}>
+          <Text bold wrap="truncate">
+            {' '}
             {pet.isShiny ? '✦ ' : ''}
             {pet.name} · {stageName} {pet.species} · {mood}
             {rank ? ` · #${rank}` : ''}
           </Text>
-          <Text dimColor>"{line}"</Text>
-          <Text>
-            ate {human(pet.lifetime)} tokens{pet.streak > 1 ? ` · ${pet.streak}-day streak` : ''}
-          </Text>
-          <Text>
-            context {'█'.repeat(bar)}
-            {'░'.repeat(10 - bar)} {Math.round(full * 100)}%
-          </Text>
-          <Text>
-            growth {'█'.repeat(grown)}
-            {'░'.repeat(10 - grown)} {next_ ? `${next_.name} at ${human(next_.at)}` : 'fully grown'}
+          <Box>
+            <Box paddingTop={1}>
+              <Text color={isRemark ? SPEECH_COLOR : undefined} dimColor={!isRemark}>
+                ◀
+              </Text>
+            </Box>
+            <Box borderStyle="round" borderColor={isRemark ? SPEECH_COLOR : undefined} borderDimColor={!isRemark} width={bubbleWidth} height={4} paddingX={1} overflow="hidden">
+              <Text wrap="wrap" bold={isRemark} dimColor={!isRemark}>
+                {line}
+              </Text>
+            </Box>
+          </Box>
+          <Text wrap="truncate">
+            {' '}ate {human(pet.lifetime)}
+            {pet.streak > 1 ? ` · ${pet.streak}-day streak` : ''} · context {cells(full)} {Math.round(full * 100)}% ·{' '}
+            {next_ ? `${next_.name} ${cells(growing)} at ${human(next_.at)}` : 'fully grown'}
           </Text>
           <Box>
             <Button
