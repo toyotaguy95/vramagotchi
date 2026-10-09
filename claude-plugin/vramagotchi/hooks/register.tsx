@@ -1,7 +1,7 @@
 import { atom, read, update } from 'claude-code'
 import type { CoreEngineInterface, Register } from 'claude-code'
 
-import type { Catch, Context, Game, Mood, Remark, Save, Standing } from '../types'
+import type { Blackjack, Catch, Context, Game, Mood, Remark, Save, Standing } from '../types'
 
 type Palette = Record<string, number[]>
 type Body = { face: number; lift: number; art: string[] }
@@ -107,7 +107,7 @@ const LINES: Record<Mood, string[]> = {
   squeezing: ['hnnngh', 'squeezing... it all... smaller', 'forgetting things on purpose', 'this is my cardio', 'do you even compact'],
 }
 
-const empty: Save = { name: 'Mochi', species: 'blob', born: 0, lifetime: 0, isHatched: false, isShiny: false, items: [], wearing: null, streak: 0, lastDay: 0, compactions: 0, pets: 0, isOnBoard: false, boardId: '', boardKey: '', team: '', talks: false, attitude: 'cheeky', bestMemory: 0, bestCatch: 0 }
+const empty: Save = { name: 'Mochi', species: 'blob', born: 0, lifetime: 0, isHatched: false, isShiny: false, items: [], wearing: null, streak: 0, lastDay: 0, compactions: 0, pets: 0, isOnBoard: false, boardId: '', boardKey: '', team: '', talks: false, attitude: 'cheeky', bestMemory: 0, bestCatch: 0, bestBlackjack: 0 }
 
 const save = atom({ plugin: 'vramagotchi', key: 'save' } as const, empty)
 const unsaved = atom({ plugin: 'vramagotchi', key: 'unsaved' } as const, 0)
@@ -122,6 +122,7 @@ const lastPrompt = atom({ plugin: 'vramagotchi', key: 'lastPrompt' } as const, '
 const remark = atom({ plugin: 'vramagotchi', key: 'remark' } as const, { text: '', until: 0, at: 0, problem: '' } as Remark)
 const game = atom({ plugin: 'vramagotchi', key: 'game' } as const, { isOn: false, sequence: [], step: 0, showFrom: 0, isOver: false } as Game)
 const catching = atom({ plugin: 'vramagotchi', key: 'catching' } as const, { isOn: false, isOver: false, place: 0, tokens: [], caught: 0, missed: 0, steps: 0, ateAt: -9 } as Catch)
+const table = atom({ plugin: 'vramagotchi', key: 'table' } as const, { isOn: false, isOver: false, you: [], pet: [], result: '', streak: 0 } as Blackjack)
 const isBusy = atom({ plugin: 'vramagotchi', key: 'isBusy' } as const, false)
 const squeezingSince = atom({ plugin: 'vramagotchi', key: 'squeezingSince' } as const, 0)
 const lastAnswer = atom({ plugin: 'vramagotchi', key: 'lastAnswer' } as const, '')
@@ -443,6 +444,7 @@ const settle = async ($: $): Promise<void> => {
     attitude: mine.attitude,
     bestMemory: Math.max(mine.bestMemory, kept?.bestMemory ?? 0),
     bestCatch: Math.max(mine.bestCatch, kept?.bestCatch ?? 0),
+    bestBlackjack: Math.max(mine.bestBlackjack, kept?.bestBlackjack ?? 0),
   }
 
   if (pending > 0) {
@@ -773,7 +775,7 @@ const card = (pet: Save, now: number): string => {
 
   return [
     `${pet.name} the ${pet.isShiny ? 'shiny ' : ''}${STAGES[stage]?.name ?? ''} ${pet.species}`,
-    `ate ${human(pet.lifetime)} tokens · ${days} day${days === 1 ? '' : 's'} old · ${pet.streak}-day streak · petted ${pet.pets} times${pet.bestMemory > 0 ? ` · memory best ${pet.bestMemory}` : ''}${pet.bestCatch > 0 ? ` · catch best ${pet.bestCatch}` : ''}`,
+    `ate ${human(pet.lifetime)} tokens · ${days} day${days === 1 ? '' : 's'} old · ${pet.streak}-day streak · petted ${pet.pets} times${pet.bestMemory > 0 ? ` · memory best ${pet.bestMemory}` : ''}${pet.bestCatch > 0 ? ` · catch best ${pet.bestCatch}` : ''}${pet.bestBlackjack > 0 ? ` · blackjack run ${pet.bestBlackjack}` : ''}`,
     next ? `grows into ${a(next.name)} at ${human(next.at)} tokens` : 'fully grown',
     '',
     `Collection ${pet.items.length}/${ITEMS.length}`,
@@ -792,6 +794,7 @@ const shape = (): number => Math.floor(Math.random() * SHAPES.length)
 const startGame = async ($: $): Promise<void> => {
   const frame = await read($, tick)
   await update($, catching, one => ({ ...one, isOn: false }))
+  await update($, table, one => ({ ...one, isOn: false }))
   await update($, game, () => ({ isOn: true, sequence: [shape()], step: 0, showFrom: frame, isOver: false }))
 }
 
@@ -907,6 +910,7 @@ const fall = (now: Catch): Catch => {
 const startCatch = async ($: $): Promise<void> => {
   falling?.cancel()
   await update($, game, one => ({ ...one, isOn: false }))
+  await update($, table, one => ({ ...one, isOn: false }))
   await update($, catching, () => ({ isOn: true, isOver: false, place: Math.floor(PLACES / 2), tokens: [], caught: 0, missed: 0, steps: 0, ateAt: -9 }))
   falling = $.clock.every(STEP_MS, () => {
     void quietly(async () => {
@@ -996,6 +1000,130 @@ const drawCatch = async ($: $, e: Site, pet: Save, play: Catch, picture: (cells:
   )
 }
 
+// ---- blackjack ----
+// You against the pet, who deals. Nothing is bet: not tokens, not anything. A card is a number from 0 to 51.
+
+const RANKS = ['A', '2', '3', '4', '5', '6', '7', '8', '9', '10', 'J', 'Q', 'K']
+const SUITS = ['♠', '♥', '♦', '♣']
+
+const deal = (): number => Math.floor(Math.random() * 52)
+
+const cardName = (card: number): string => `${RANKS[card % 13] ?? ''}${SUITS[Math.floor(card / 13)] ?? ''}`
+
+/** What a hand is worth: an ace counts eleven until that would go over 21. */
+const worth = (hand: number[]): number => {
+  let total = 0
+  let aces = 0
+
+  for (const card of hand) {
+    const rank = card % 13
+    total += rank === 0 ? 11 : Math.min(10, rank + 1)
+    aces += rank === 0 ? 1 : 0
+  }
+
+  while (total > 21 && aces > 0) {
+    total -= 10
+    aces -= 1
+  }
+
+  return total
+}
+
+/** Ends a hand: the pet draws to 17, then the higher hand that is not over 21 wins. */
+const settleHand = (now: Blackjack): Blackjack => {
+  const pet = [...now.pet]
+  const mine = worth(now.you)
+
+  while (mine <= 21 && worth(pet) < 17) {
+    pet.push(deal())
+  }
+
+  const theirs = worth(pet)
+  const result = mine > 21 ? 'lost' : theirs > 21 || mine > theirs ? 'won' : mine === theirs ? 'tied' : 'lost'
+
+  return { ...now, pet, isOver: true, result, streak: result === 'won' ? now.streak + 1 : result === 'tied' ? now.streak : 0 }
+}
+
+const finishHand = async ($: $, after: Blackjack): Promise<void> => {
+  if (after.isOver && after.streak > (await read($, save)).bestBlackjack) {
+    await change($, pet => ({ ...pet, bestBlackjack: after.streak }))
+  }
+}
+
+const startBlackjack = async ($: $): Promise<void> => {
+  falling?.cancel()
+  await update($, game, one => ({ ...one, isOn: false }))
+  await update($, catching, one => ({ ...one, isOn: false }))
+  const after = await update($, table, one => {
+    const dealt: Blackjack = { isOn: true, isOver: false, you: [deal(), deal()], pet: [deal(), deal()], result: '', streak: one.streak }
+
+    return worth(dealt.you) === 21 ? settleHand(dealt) : dealt
+  })
+  await finishHand($, after)
+}
+
+const hit = async ($: $): Promise<void> => {
+  const after = await update($, table, one => {
+    if (!one.isOn || one.isOver) {
+      return one
+    }
+
+    const drawn = { ...one, you: [...one.you, deal()] }
+
+    return worth(drawn.you) >= 21 ? settleHand(drawn) : drawn
+  })
+  await finishHand($, after)
+}
+
+const stand = async ($: $): Promise<void> => {
+  await finishHand($, await update($, table, one => (one.isOn && !one.isOver ? settleHand(one) : one)))
+}
+
+const drawBlackjack = async ($: $, e: Site, pet: Save, play: Blackjack, frame: number, picture: (face: string, floats: string[]) => ReturnType<typeof h>) => {
+  const { Box, Button, Text } = $.ui.resolve(e)
+  const mine = worth(play.you)
+  const said =
+    play.result === 'won'
+      ? mine === 21 && play.you.length === 2 ? 'Blackjack! You win.' : worth(play.pet) > 21 ? `${pet.name} went over. You win.` : 'You win.'
+      : play.result === 'lost'
+        ? mine > 21 ? `You went over. ${pet.name} wins.` : `${pet.name} wins.`
+        : play.result === 'tied'
+          ? 'A tie.'
+          : 'Hit or stand?'
+  const face = play.result === 'lost' ? 'happy' : play.result === 'won' ? 'out' : frame % 6 === 5 ? 'blink' : 'open'
+
+  return (
+    <Box>
+      <Box paddingTop={1}>{picture(face, play.result === 'lost' ? [frame % 2 === 0 ? 'sparkA' : 'sparkB'] : [])}</Box>
+      <Box flexDirection="column" paddingLeft={1}>
+        <Text bold wrap="truncate">
+          {' '}
+          {pet.name} · blackjack{play.streak > 0 ? ` · ${play.streak} won in a row` : ''}
+        </Text>
+        <Box borderStyle="round" borderDimColor width={44} height={4} paddingX={1} flexDirection="column" overflow="hidden">
+          <Text wrap="truncate">
+            {pet.name}: {play.isOver ? `${play.pet.map(cardName).join(' ')}  (${worth(play.pet)})` : `${cardName(play.pet[0] ?? 0)} ??`}
+          </Text>
+          <Text wrap="truncate">
+            You: {play.you.map(cardName).join(' ')}  ({mine})
+          </Text>
+        </Box>
+        <Text wrap="truncate">
+          {' '}
+          {said}
+          {play.isOver ? ` Best run: ${Math.max(play.streak, pet.bestBlackjack)}. Nothing is bet.` : ''}
+        </Text>
+        <Box>
+          {!play.isOver && <Button key="hit" label="Hit" hotkey="1" onPress={() => hit($)} />}
+          {!play.isOver && <Button key="stand" label="Stand" hotkey="2" onPress={() => stand($)} />}
+          {play.isOver && <Button key="again" label="Deal again" hotkey="1" onPress={() => startBlackjack($)} />}
+          <Button key="quit" label={play.isOver ? 'Done' : 'Quit'} onPress={() => update($, table, one => ({ ...one, isOn: false, streak: one.isOver ? one.streak : 0 }))} />
+        </Box>
+      </Box>
+    </Box>
+  )
+}
+
 /**
  * Draws the pet and everything beside it. The same drawing serves the band above the prompt (the terminal and
  * the desktop app) and the pet's own window (/pet window, for the apps that have no band).
@@ -1039,13 +1167,14 @@ const drawPet = async ($: $, e: Site, isWorking: boolean, columns: number, isWin
   }
 
   const play = await read($, game)
+  const hand = await read($, table)
 
-  if (play.isOn) {
+  if (play.isOn || hand.isOn) {
     const stageName = STAGES[stageOf(pet.lifetime)]?.name ?? 'baby'
+    const sprite = (face: string, floats: string[]) =>
+      picture(draw => petPicture(pet.species, stageName, face, pet.wearing, floats, pet.isShiny ? ['shiny'] : [], draw), `${pet.name} playing a game`)
 
-    return drawGame($, e, pet, play, frame, (face, floats) =>
-      picture(draw => petPicture(pet.species, stageName, face, pet.wearing, floats, pet.isShiny ? ['shiny'] : [], draw), `${pet.name} playing the memory game`),
-    )
+    return hand.isOn ? drawBlackjack($, e, pet, hand, frame, sprite) : drawGame($, e, pet, play, frame, sprite)
   }
 
   const now = await $.clock.now()
@@ -1145,6 +1274,7 @@ const drawPet = async ($: $, e: Site, isWorking: boolean, columns: number, isWin
           )}
           <Button key="play" label="Play memory" onPress={() => startGame($)} />
           <Button key="catch" label="Play catch" onPress={() => startCatch($)} />
+          <Button key="blackjack" label="Blackjack" onPress={() => startBlackjack($)} />
           {!isWindow && (
             <Button
               key="hide"
@@ -1329,8 +1459,16 @@ export const register: Register = on => {
         }
       }
 
+      if (what.toLowerCase() === 'blackjack') {
+        await startBlackjack($)
+
+        return {
+          text: `Blackjack: you against ${pet.name}, who deals. Get closer to 21 than it does without going over. Hit takes a card, Stand stops: click them, or type 1 and 2.\nBest run of wins: ${pet.bestBlackjack}. Nothing is bet, and playing never changes what your pet has eaten.`,
+        }
+      }
+
       if (what.toLowerCase() !== 'memory') {
-        return { text: `${pet.name} knows two games.\n/pet play memory: it shows shapes, you press them back in order. Best: ${pet.bestMemory}.\n/pet play catch: slide it under falling tokens. Best: ${pet.bestCatch}.\nPlaying never changes what your pet has eaten.` }
+        return { text: `${pet.name} knows three games.\n/pet play blackjack: you against ${pet.name}. Best run of wins: ${pet.bestBlackjack}.\n/pet play memory: it shows shapes, you press them back in order. Best: ${pet.bestMemory}.\n/pet play catch: slide it under falling tokens. Best: ${pet.bestCatch}.\nPlaying never changes what your pet has eaten.` }
       }
 
       await startGame($)

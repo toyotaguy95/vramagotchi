@@ -280,7 +280,7 @@ test('the memory game shows shapes, takes them back in order, and keeps the best
   expect(await (await band()).find({ type: 'Text', text: /baby \w+ · idle/ })).toBeTruthy()
 
   // The catch game: tokens fall by themselves, and three on the ground end it.
-  expect(String(((await $.command.run({ command: 'pet', args: 'play' } as never)) as { text?: string }).text)).toContain('two games')
+  expect(String(((await $.command.run({ command: 'pet', args: 'play' } as never)) as { text?: string }).text)).toContain('three games')
   await $.command.run({ command: 'pet', args: 'play catch' } as never)
   expect(await (await band()).find({ type: 'Text', text: /catch game$/ })).toBeTruthy()
   expect(await (await band()).find({ type: 'Raster' })).toBeTruthy()
@@ -301,4 +301,52 @@ test('the memory game shows shapes, takes them back in order, and keeps the best
   expect(await (await $.ui.mount({ ...(BAND as object), surface: 'desktop' } as never)).find({ type: 'Svg' })).toBeTruthy()
   await over.press({ key: 'quit' } as never)
   expect(await (await band()).find({ type: 'Text', text: /baby \w+ · idle/ })).toBeTruthy()
+})
+
+test('blackjack against the pet deals, hits, stands and ends every hand', async ($, on) => {
+  mock.clock(on, { now: 1_700_000_000_000 })
+  const kept: Record<string, unknown> = {}
+  on('store.get', (_, e) => ({ value: kept[e.key] }) as never)
+  on('store.set', (_, e) => {
+    kept[e.key] = e.value
+
+    return { value: undefined } as never
+  })
+  on('session.usage', () => ({ value: { startedAt: 0, context: { tokens: 50_000, window: 200_000 }, rateLimits: [] } }) as never)
+  on('turn.step', async function* (_, e) {
+    return { turnId: e.turnId, index: e.index, answer: 'ok', toolUses: [], usage: { input_tokens: 10, output_tokens: 500 } } as never
+  })
+  on('session.start', (_, e) => e as never)
+  on('turn.complete', () => ({ text: 'ok' }) as never)
+  on('command.register', () => ({ value: undefined }) as never)
+  on('ui.toast', () => ({ value: undefined }) as never)
+
+  await $.session.start({ cwd: '/tmp', surface: 'terminal', isInteractive: true })
+  for await (const _ of $.turn.step({ turnId: 't1', index: 0, model: 'test', messageCount: 1 })) {
+    // the pet eats, and hatches
+  }
+  await $.turn.complete({ answer: 'ok', durationMs: 1, isAborted: false, turnId: 't1', reason: 'answer' } as never)
+
+  const band = () => $.ui.mount(BAND)
+  const lifetime = (kept.pet as Save).lifetime
+
+  // Blackjack: twenty hands, standing or hitting by the book, each one ends in a win, a loss or a tie.
+  await $.command.run({ command: 'pet', args: 'play blackjack' } as never)
+
+  for (let hand = 0; hand < 20; hand++) {
+    for (let card = 0; card < 12 && (await (await band()).find({ type: 'Button', text: /Hit/ })); card++) {
+      const mine = Number(/You: .*\((\d+)\)/.exec(String(((await (await band()).find({ type: 'Text', text: /^You: / })) as { text?: string }).text))?.[1])
+      expect(mine).toBeLessThan(21)
+      expect(await (await band()).find({ type: 'Text', text: /\?\?$/ })).toBeTruthy()      // the pet's second card stays face down
+      await (await band()).press({ key: mine < 17 ? 'hit' : 'stand' } as never)
+    }
+
+    const done = await band()
+    expect(await done.find({ type: 'Text', text: /You win\.|wins\.|A tie\./ })).toBeTruthy()
+    expect(await done.find({ type: 'Text', text: /\?\?/ })).toBeFalsy()
+    await done.press({ key: 'again' } as never)
+  }
+
+  expect((kept.pet as Save).bestBlackjack).toBeGreaterThanOrEqual(0)
+  expect((kept.pet as Save).lifetime).toBe(lifetime)
 })

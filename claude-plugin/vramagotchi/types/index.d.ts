@@ -31,6 +31,8 @@ export type Save = {
   bestMemory: number
   /** The most tokens it has caught in one catch game. */
   bestCatch: number
+  /** Its owner's longest run of blackjack hands won in a row. */
+  bestBlackjack: number
 }
 
 /** The last thing the pet said about a turn: the line, until when it shows, and when it was asked for. */
@@ -50,6 +52,9 @@ export type Catch = {
   steps: number
   ateAt: number
 }
+
+/** A hand of blackjack against the pet: both hands as cards 0 to 51, how it ended, and the run of wins so far. */
+export type Blackjack = { isOn: boolean; isOver: boolean; you: number[]; pet: number[]; result: string; streak: number }
 
 /** Where the pet stands on the leaderboard, as the board last said. */
 export type Standing = { rank: number | null; teamRank: number | null; score: number; sentAt: number }
@@ -74,6 +79,7 @@ declare module 'claude-code' {
       isBusy: boolean
       game: Game
       catching: Catch
+      table: Blackjack
     }
   }
 }
