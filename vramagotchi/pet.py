@@ -5,7 +5,16 @@ import time
 import zlib
 
 COLORS = [(150, 214, 80), (104, 196, 244), (188, 152, 246), (255, 176, 116), (255, 150, 192), (250, 222, 104)]
-SPECIES = ("cat", "bear", "bunny", "sprout")
+SPECIES = ("cat", "bear", "bunny", "sprout", "duck", "cactus", "ghost", "robot", "mushroom", "axolotl", "dragon")
+# Some animals come in their own colour; the rest take whichever colour the pet was born with.
+SPECIES_COLOR = {"duck": (255, 214, 92), "cactus": (124, 200, 108), "ghost": (236, 236, 250), "robot": (176, 190, 208),
+                 "mushroom": (246, 228, 204), "axolotl": (255, 172, 194), "dragon": (118, 206, 160)}
+# How a pet talks when its own model writes its lines.
+ATTITUDES = {
+    "sweet": "Be warm and sweet.",
+    "cheeky": "Be dry and teasing, like a friend.",
+    "rude": "Be rude and funny, like a comedian who secretly likes their owner. Mild swearing is fine. No slurs.",
+}
 NAMES = ["Mochi", "Biscuit", "Tofu", "Nugget", "Pixel", "Waffle", "Pickle", "Bean", "Noodle", "Dumpling", "Gizmo", "Sprout"]
 
 CLAUDE_LINES = {
@@ -67,9 +76,10 @@ class Pet:
         self.sleep_after = sleep_after
         self.name = saved.get("name") or NAMES[(zlib.crc32(gpu.uuid.encode()) + slot) % len(NAMES)]
         self.color_index = saved.get("color", slot) % len(COLORS)
-        self.color = COLORS[self.color_index] if gpu.kind == "gpu" else (222, 132, 98)
-        self.species_index = saved.get("species", slot) % len(SPECIES)
+        self.species_index = saved.get("species", slot if unlock_all else random.randrange(len(SPECIES))) % len(SPECIES)
         self.species = SPECIES[self.species_index]
+        self.attitude = saved.get("attitude") if saved.get("attitude") in ATTITUDES else "cheeky"
+        self.color = self._coat()
         self.born = saved.get("born", now)
         self.tokens_total = saved.get("tokens_total", 0.0)
         self.day = saved.get("day", time.strftime("%Y-%m-%d"))
@@ -100,8 +110,24 @@ class Pet:
         self._stamp = gpu.stamp
         self._settled = gpu.mem_used     # last memory level we commented on
 
+    def _coat(self):
+        own = COLORS[self.color_index] if self.gpu.kind == "gpu" else (222, 132, 98)
+        return SPECIES_COLOR.get(self.species, own)
+
+    def become_next(self):
+        """Turn into the next animal on the list."""
+        self.species_index = (self.species_index + 1) % len(SPECIES)
+        self.species, self.color = SPECIES[self.species_index], None
+        self.color = self._coat()
+        return self.species
+
+    def next_attitude(self):
+        kinds = list(ATTITUDES)
+        self.attitude = kinds[(kinds.index(self.attitude) + 1) % len(kinds)]
+        return self.attitude
+
     def save(self):
-        return {"name": self.name, "color": self.color_index, "species": self.species_index, "born": self.born,
+        return {"name": self.name, "color": self.color_index, "species": self.species_index, "attitude": self.attitude, "born": self.born,
                 "tokens_total": round(self.tokens_total), "day": self.day, "tokens_today": round(self.tokens_today),
                 "max_temp": self.max_temp, "last_fed": self.last_fed, "faints": self.faints,
                 "times_petted": self.times_petted, "unlocked": list(self.unlocked), "wearing": self.wearing,

@@ -8,7 +8,7 @@ import time
 from pathlib import Path
 
 from .art import FPS, draw
-from .pet import ITEM_NAMES, LINES, Pet
+from .pet import ATTITUDES, ITEM_NAMES, LINES, Pet
 from .sources import Demo, find_llm
 from .util import human
 
@@ -109,7 +109,7 @@ class World:
                 self.treats[g.uuid] -= treat
             pet.update(g, treat + (own.get(g.uuid, 0) if g.kind != "gpu" else tokens / len(eaters) if g.uuid in eaters else 0.0), now, dt)
             pet.px = draw(pet, self.frame_no, now)
-            look = (pet.mood, pet.egg, bool(pet.hatch_start), pet.wearing, round(pet.pct, 1), pet.stage)
+            look = (pet.mood, pet.egg, bool(pet.hatch_start), pet.wearing, round(pet.pct, 1), pet.stage, pet.species)
             if pet.still is None or look != pet.still_look or self.frame_no % 20 == 0:
                 pet.still, pet.still_look = pet.px, look      # a steadier picture for very small windows
             pets.append(pet)
@@ -161,8 +161,8 @@ class World:
         def ask():
             try:
                 text = self.llm.say(
-                    f"You are {pet.name}, a tiny pet creature that lives inside an {g.name} graphics card and eats tokens. "
-                    "Reply with ONE short funny sentence in first person, under 14 words, no quotes, no emojis.",
+                    f"You are {pet.name}, a tiny pet {pet.species} that lives inside an {g.name} graphics card and eats tokens. "
+                    f"Reply with ONE short funny sentence in first person, under 14 words, no quotes, no emojis. {ATTITUDES[pet.attitude]}",
                     f"Status: {g.temp:.0f}°C, VRAM {pet.pct * 100:.0f}% full ({g.mem_used / 1024:.1f} GB), "
                     f"{human(pet.tokens_today)} tokens eaten today, mood: {pet.label()}. You were just fed. Say something.")
             except Exception:
@@ -194,6 +194,18 @@ class World:
             pet.petted_until = now + 2.5
             pet.times_petted += 1
             pet.say(random.choice(LINES["petted"]), 2.5, now)
+
+    def morph(self, uuid=None):
+        """Turn the chosen pet into the next animal."""
+        pet = self.pick(uuid)
+        if pet and not pet.egg:
+            pet.say(f"I'm a {pet.become_next()} now", 3, time.time())
+
+    def attitude(self, uuid=None):
+        pet = self.pick(uuid)
+        if pet and not pet.egg:
+            kind = pet.next_attitude()
+            pet.say({"sweet": "I'll be sweet", "cheeky": "I'll be cheeky", "rude": "fine. I'll be rude"}[kind] + " when you feed me", 3, time.time())
 
     def dress(self, uuid=None, item="next"):
         pet = self.pick(uuid)

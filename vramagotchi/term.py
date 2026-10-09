@@ -184,15 +184,15 @@ def render(world, pets, cols, rows):
     lines = [center(f"{BOLD}VRAMagotchi{RESET}{DIM}  a pet that lives on your GPU{RESET}", cols)] if title else []
     lines += [pad + "  ".join(b[i] for b in blocks) for i in range(tallest)]
     if footer:
-        keys = "[f] feed  [p] pet  [a] dress up  " + ("[tab] next pet  " if len(pets) > 1 else "") + "[q] quit"
+        keys = "[f] feed  [p] pet  [a] dress up  [s] animal  [t] attitude  " + ("[tab] next pet  " if len(pets) > 1 else "") + "[q] quit"
         if world.waiting:
             keys = f"[n] hatch a pet for {'Claude Code' if world.waiting[0].kind == 'claude' else 'another GPU'}  " + keys
         if any(p.egg and not p.hatch_start for p in pets):
             keys = "[h] hatch your egg   [q] quit"
         elif fit < len(pets):
-            keys = f"[tab] next pet ({world.selected + 1}/{len(pets)})  [f] feed  [p] pet  [a] dress up  [q] quit"
+            keys = f"[tab] next pet ({world.selected + 1}/{len(pets)})  [f] feed  [p] pet  [a] dress up  [s] animal  [t] attitude  [q] quit"
         if vlen(keys) > cols:
-            keys = ("h hatch · q quit" if "hatch your egg" in keys else "f feed · p pet · a dress · q quit") if cols >= 34 else "q quit"
+            keys = ("h hatch · q quit" if "hatch your egg" in keys else "f feed · p pet · a dress · s animal · q quit") if cols >= 44 else "q quit"
         lines.append(center(f"{DIM}{keys}  {world.note}{RESET}" if vlen(keys) + len(world.note) + 2 <= cols else f"{DIM}{keys}{RESET}", cols))
     lines = [clip(line, cols) for line in lines[:rows]]
     return "\x1b[?2026h\x1b[H" + "\n".join(line + "\x1b[K" for line in lines) + "\x1b[J\x1b[?2026l"
@@ -234,6 +234,10 @@ def interactive(world):
                     world.stroke()
                 if "a" in key:
                     world.dress()
+                if "s" in key:
+                    world.morph()
+                if "t" in key:
+                    world.attitude()
     except KeyboardInterrupt:
         pass
     finally:

@@ -162,8 +162,10 @@ Token counts are exact with a llama.cpp server (its `/slots` endpoint, looked fo
 pass `--llm URL`) and estimated with Ollama, shown with a `~`. Without either, the pets still react to load,
 memory and heat. Macs report memory and GPU load but no temperature.
 
-**Keys:** `f` feed (your own model writes the pet's reply) · `p` pet · `a` dress up · `n` hatch a pet for
-another GPU · `tab` next pet · `q` quit
+**Keys:** `f` feed (your own model writes the pet's reply) · `p` pet · `a` dress up · `s` change animal ·
+`t` change attitude (sweet, cheeky or rude) · `n` hatch a pet for another GPU · `tab` next pet · `q` quit
+
+A GPU pet can be a cat, bear, bunny, sprout, duck, cactus, ghost, robot, mushroom, axolotl or dragon.
 
 GPU pets grow at the same token counts as the Claude Code pet, and collect their own things: headphones,
 wizard hat, crown and top hat for tokens eaten, sunglasses for surviving 85°C, a bandage for running out of

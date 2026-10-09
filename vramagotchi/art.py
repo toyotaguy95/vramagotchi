@@ -203,6 +203,29 @@ def draw(pet, frame, now=None):
             ex, tall = cx + side * (rx * 0.42 + 0.4), 2.6 if asleep else 4.8
             parts.append(oval(ex, top + 1.0 - tall, 1.9, tall + 0.6))
             inner.append((oval(ex, top + 0.8 - tall, 0.75, tall - 0.9), pink))
+        elif sp == "robot":                      # a bolt on each side of its head
+            ex = cx + side * (rx + 0.8)
+            bolt = region(lambda x, y, ex=ex: abs(x - ex) <= 1.3 and abs(y - (cy - 1.5)) <= 2.2, ex - 2, cy - 4, ex + 2, cy + 1)
+            parts.append(bolt)
+            inner.append((bolt, PAL["e"]))
+        elif sp == "axolotl":                    # three gills fanning out from each cheek
+            for k in range(3):
+                gill = oval(cx + side * (rx + 1.6 - 0.5 * k), top + 3.0 + k * 2.4, 2.4, 1.0)
+                parts.append(gill)
+                inner.append((gill, lerp(base, (255, 90, 140), 0.6)))
+        elif sp == "dragon" and pet.stage < 3:   # a dragon has horns from the start; every adult gets them later
+            hx = cx + side * rx * 0.5
+            horn = tri(hx - 1.6, top + 1.6, hx + 1.6, top + 1.6, hx + side * 1.2, top - 3.2)
+            parts.append(horn)
+            inner.append((horn, cream))
+    if sp == "mushroom":                         # a red cap with white spots, wider than the body
+        cap = [p for p in oval(cx, top + 2.4, rx + 2.4, 4.8) if p[1] <= top + 2.6]
+        parts.append(cap)
+        inner.append((cap, PAL["r"]))
+        for dx, dy, r in ((-0.55, 0.6, 1.5), (0.08, -1.4, 1.6), (0.62, 0.9, 1.3)):
+            inner.append(([p for p in oval(cx + dx * rx, top + dy, r, r * 0.8) if p in set(cap)], WHITE))
+    elif sp == "duck":                           # a tuft of feathers
+        parts.append(oval(cx + 0.5, top - 0.4, 1.3, 1.9))
     if pet.stage >= 3:               # grown-ups get horns and little wings; a legend's are gold
         trim = PAL["y"] if pet.stage >= 4 else cream
         for side in (-1, 1):
@@ -215,7 +238,7 @@ def draw(pet, frame, now=None):
                 parts.append(wing)
                 inner.append(([p for p in wing if not in_body(*p)], PAL["y"] if pet.stage >= 4 else shade(base, 0.66)))
     if mood != "fainted":
-        if sp == "cat":
+        if sp in ("cat", "dragon"):
             sway = 0 if asleep else math.sin(frame / FPS * math.pi) * 0.8
             for i in range(8):       # a tail curling up the right side
                 t = i / 7
@@ -240,7 +263,7 @@ def draw(pet, frame, now=None):
         arms = []
     for side, ay in zip((-1, 1), arms):
         parts.append(oval(cx + side * (rx - 0.3), ay, 2.3, 2.1))
-    if not asleep:
+    if not asleep and sp != "ghost":             # a ghost has no feet
         hop = mood == "working"
         for side, lifted in ((-1, hop and beat), (1, hop and not beat)):
             if not lifted:
@@ -249,6 +272,12 @@ def draw(pet, frame, now=None):
     for part in parts:
         for x, y in part:
             mask[y][x] = True
+    if sp == "ghost" and mood != "fainted":      # a rippling hem where feet would be
+        for x in range(W):
+            if (x + frame // 5) % 4 < 2:
+                mask[GROUND][x] = False
+                if (x + frame // 5) % 4 == 0:
+                    mask[GROUND - 1][x] = False
     for y in range(H):
         for x in range(W):
             if not mask[y][x]:
@@ -268,6 +297,18 @@ def draw(pet, frame, now=None):
     if sp == "sprout" and not look["head"] and mood != "fainted":
         lean = 0 if asleep else rnd(math.sin(frame / FPS * 2 * math.pi / 2.6) * 0.8)
         stamp(BITS["sprout"], 14 + lean, head - 5)
+    if sp == "cactus":
+        for dx, dy in ((-0.62, -0.55), (0.6, -0.6), (-0.8, 0.15), (0.8, 0.1), (-0.5, 0.75), (0.55, 0.72), (0.0, -0.86)):
+            x, y = rnd(cx + dx * rx), rnd(cy + dy * ry)       # spines
+            if 0 <= y < H and 0 <= x < W and mask[y][x] and px[y][x] != edge:
+                px[y][x] = edge
+        if not look["head"] and mood != "fainted":
+            stamp(BITS["flower"], 16, head - 4)
+    if sp == "robot" and not look["head"] and mood != "fainted":
+        for k in range(1, 4):                                  # an antenna with a light on top
+            put(cx + 0.5, head - k, PAL["E"])
+        for dx, dy in ((0, 0), (1, 0), (0, -1), (1, -1)):
+            put(cx + dx, head - 4 + dy, PAL["r"] if frame % 10 < 6 else PAL["R"])
 
     # ── face ──
     xc = int(cx)                     # the face is centred between columns xc and xc+1
@@ -310,7 +351,7 @@ def draw(pet, frame, now=None):
             if mask[ey + 4][x] and px[ey + 4][x] != edge:
                 px[ey + 4][x] = pink
     my = ey + 4
-    if sp != "sprout" and mood != "fainted":
+    if sp not in ("sprout", "duck", "robot", "ghost") and mood != "fainted":
         put(xc, my - 1, NOSE)
         put(xc + 1, my - 1, NOSE)
     if mood == "fainted":
@@ -329,7 +370,10 @@ def draw(pet, frame, now=None):
         mouth = "frown"
     else:
         mouth = "smile"
-    stamp(MOUTHS[mouth], xc - 1, my)
+    if sp == "duck" and mood != "fainted":       # a bill instead of a mouth; it opens to eat
+        stamp(["OOOO", "MTTM", "OOOO"] if mouth == "open" else ["OOOO", "OOOO", ".OO."], xc - 1, my - 1)
+    else:
+        stamp(MOUTHS[mouth], xc - 1, my)
 
     # ── things it wears ──
     if look["band"]:

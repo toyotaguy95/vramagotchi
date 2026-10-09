@@ -116,6 +116,8 @@ class Handler(BaseHTTPRequestHandler):
         action, uuid = ask.get("action"), ask.get("id")
         if action == "feed":
             self.world.feed(uuid)
+        elif action == "animal":
+            self.world.morph(uuid)
         elif action == "pet":
             self.world.stroke(uuid)
         elif action == "hatch":
@@ -227,10 +229,11 @@ function card(p, w, h) {
     <div class="row"><span class="vram"></span><span class="vitals"></span></div>
     <div class="row"><span class="ate"></span><span class="rate"></span></div>
     <div class="wardrobe"></div>
-    <div class="acts"><button data-act="feed">feed</button><button data-act="pet">pet</button></div>`;
+    <div class="acts"><button data-act="feed">feed</button><button data-act="pet">pet</button><button data-act="animal">animal</button></div>`;
   el.querySelector(".stage").onclick = () => send("pet", p.id);
   el.querySelector('[data-act="feed"]').onclick = () => send("feed", p.id);
   el.querySelector('[data-act="pet"]').onclick = () => send("pet", p.id);
+  el.querySelector('[data-act="animal"]').onclick = () => send("animal", p.id);
   document.getElementById("pets").appendChild(el);
   return { el, ctx: el.querySelector("canvas").getContext("2d"), items: "" };
 }
