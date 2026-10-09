@@ -2,99 +2,105 @@
 <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Pixelify+Sans:wght@500;700&family=IBM+Plex+Mono:wght@400;500;600&display=swap">
 <style>
   /* Layout: one narrow column. A podium for the top three and a ranked list, then the toy-shop part: what a pet is,
-     how it grows, what it can collect. Every colour comes from the pet's own sprite palette (coat, belly, and the
-     bright token crumbs it eats), so the page and the pets are one world. One look: night, with toy-bright tiles. */
+     how it grows, what it can collect.
+     Colour: daytime. The pet's coat is orange, so the page is the sky behind it: orange reads strongest against
+     blue. Surfaces are white like clouds, and the tiles are candy colours, like the plastic shells of the toys this
+     comes from. One look, bright, on purpose. */
   :root {
-    color-scheme: dark;
-    --ink: #1b1626;        /* the sprite's eye colour, darkened: the ground */
-    --panel: #251e35;
-    --line: #3b3252;
-    --cream: #ffeedc;      /* the pet's belly: text */
-    --dim: #a89db8;
-    --pet: #e28864;        /* the pet's coat: the accent */
-    --gold: #ffd60a;       /* a token particle: first place only */
-    --teal: #40e0d0;
-    --pink: #ff96a0;
-    --violet: #aa82ff;
+    color-scheme: light;
+    --sky: #cfdcff;        /* the ground: a clear periwinkle sky */
+    --sky-deep: #aebff7;   /* lines and edges on the sky */
+    --cloud: #fbfbff;      /* surfaces */
+    --ink: #241c3a;        /* the sprite's eye colour: all text */
+    --soft: #554c78;       /* quieter text */
+    --pet: #f08552;        /* the pet's coat: buttons and the wordmark */
+    --pet-deep: #b9431d;   /* the coat, dark enough to read as text */
+    --butter: #ffe07a;
+    --mint: #a6ecd6;
+    --lilac: #cdbcff;
+    --pink: #ffb7cb;
+    --peach: #ffcba6;
+    --teal-deep: #0b7f73;
+    --rose-deep: #c22e6d;
     --display: "Pixelify Sans", "Courier New", monospace;
     --mono: "IBM Plex Mono", ui-monospace, "SFMono-Regular", Menlo, Consolas, monospace;
   }
   * { box-sizing: border-box; }
-  body { background: var(--ink); color: var(--cream); font: 400 15px/1.55 var(--mono); }
-  .page { max-width: 760px; margin: 0 auto; padding-inline: 16px; padding-block: 36px 56px; display: flex; flex-direction: column; gap: 36px; }
-  a { color: var(--pet); }
-  :focus-visible { outline: 2px solid var(--teal); outline-offset: 2px; }
+  body { background: var(--sky); color: var(--ink); font: 400 15px/1.55 var(--mono); }
+  .page { max-width: 760px; margin: 0 auto; padding-inline: 16px; padding-block: 36px 56px; display: flex; flex-direction: column; gap: 40px; }
+  a { color: var(--pet-deep); }
+  :focus-visible { outline: 3px solid var(--ink); outline-offset: 2px; }
   canvas { image-rendering: pixelated; display: block; }
-
-  header { display: flex; flex-direction: column; gap: 10px; }
-  h1 { font: 700 clamp(34px, 9vw, 54px)/1 var(--display); margin: 0; letter-spacing: 0.01em; text-wrap: balance; }
-  h1 span { color: var(--pet); }
-  .lede { color: var(--dim); max-width: 56ch; margin: 0; }
-  .note { border: 1px dashed var(--line); color: var(--dim); padding: 8px 12px; font-size: 13px; }
-  .note b { color: var(--gold); font-weight: 600; }
-
-  h2 { font: 700 24px/1.2 var(--display); margin: 0 0 14px; color: var(--cream); }
   section { scroll-margin-top: 16px; }
 
+  header { display: flex; flex-direction: column; gap: 12px; }
+  h1 { font: 700 clamp(36px, 10vw, 60px)/1 var(--display); margin: 0; letter-spacing: 0.01em; text-wrap: balance; color: var(--ink); }
+  h1 span { color: var(--pet-deep); }
+  .lede { color: var(--soft); max-width: 56ch; margin: 0; font-size: 16px; }
+  .note { background: var(--butter); color: var(--ink); border: 2px solid var(--ink); border-radius: 12px; padding: 8px 12px; font-size: 13px; margin: 0; }
+  .note b { font-weight: 600; }
+
+  h2 { font: 700 26px/1.2 var(--display); margin: 0 0 14px; color: var(--ink); }
+
   /* a row of token crumbs marching along: the page's divider */
-  .crumbs { height: 6px; margin-bottom: 14px; background: repeating-linear-gradient(90deg, var(--gold) 0 6px, transparent 6px 18px, var(--teal) 18px 24px, transparent 24px 36px, var(--violet) 36px 42px, transparent 42px 54px, var(--pink) 54px 60px, transparent 60px 72px); animation: march 2.4s steps(12) infinite; }
+  .crumbs { height: 6px; margin-bottom: 14px; background: repeating-linear-gradient(90deg, #f5a700 0 6px, transparent 6px 18px, #12b3a0 18px 24px, transparent 24px 36px, #8a63f5 36px 42px, transparent 42px 54px, #ff5f8a 54px 60px, transparent 60px 72px); animation: march 2.4s steps(12) infinite; }
   @keyframes march { to { background-position: 72px 0; } }
   @media (prefers-reduced-motion: reduce) { .crumbs { animation: none; } }
 
   nav { display: flex; flex-wrap: wrap; gap: 8px; }
-  nav a { font: 600 13px/1 var(--mono); color: var(--cream); text-decoration: none; border: 1px solid var(--line); border-radius: 999px; padding: 9px 14px; }
-  nav a:hover { border-color: var(--pet); color: var(--pet); }
+  nav a { font: 600 13px/1 var(--mono); color: var(--ink); text-decoration: none; background: var(--cloud); border: 2px solid var(--ink); border-radius: 999px; padding: 9px 14px; }
+  nav a:hover { background: var(--butter); }
 
-  .about { display: flex; flex-direction: column; gap: 8px; }
-  .about p { margin: 0; color: var(--dim); max-width: 60ch; }
-  .about p b { color: var(--cream); font-weight: 600; }
-
-  /* character cards: one toy-bright tile per stage or item */
-  .cards { display: grid; grid-template-columns: repeat(auto-fill, minmax(124px, 1fr)); gap: 10px; }
-  .card { border-radius: 18px; padding: 12px 10px 10px; display: flex; flex-direction: column; align-items: center; gap: 4px; text-align: center; min-width: 0; background: color-mix(in srgb, var(--tint) 20%, var(--panel)); border: 2px solid color-mix(in srgb, var(--tint) 55%, var(--panel)); }
-  .card canvas { width: 100px; height: 60px; }
-  .card .label { font: 700 17px/1.15 var(--display); color: var(--cream); }
-  .card .how { font-size: 12px; line-height: 1.35; color: var(--dim); }
-  .card .kind { font: 600 10px/1 var(--mono); letter-spacing: 0.08em; text-transform: uppercase; color: var(--tint); margin-top: 2px; }
-
-  /* the podium */
+  /* the podium: three pets standing on candy blocks, straight on the sky */
   .podium { display: grid; grid-template-columns: 1fr 1.25fr 1fr; gap: 10px; align-items: end; }
   .stand { display: flex; flex-direction: column; align-items: center; gap: 6px; min-width: 0; text-align: center; }
   .stand canvas { width: min(100%, calc(var(--zoom) * 20px)); height: auto; aspect-ratio: 20 / 12; }
   .stand .name { font: 700 20px/1.1 var(--display); overflow-wrap: anywhere; }
-  .stand .score { font-variant-numeric: tabular-nums; }
-  .stand .sub { color: var(--dim); font-size: 12px; }
-  .block { width: 100%; background: var(--panel); border-top: 3px solid var(--line); display: grid; place-items: center; font: 700 26px/1 var(--display); color: var(--dim); }
-  .first { --zoom: 9; } .first .block { height: 92px; border-color: var(--gold); color: var(--gold); }
-  .second { --zoom: 7; } .second .block { height: 64px; }
-  .third { --zoom: 7; } .third .block { height: 44px; }
-  .first .name { color: var(--gold); }
+  .stand .score { font-variant-numeric: tabular-nums; font-weight: 600; }
+  .stand .sub { color: var(--soft); font-size: 12px; }
+  .block { width: 100%; border: 2px solid var(--ink); border-bottom: 0; border-radius: 14px 14px 0 0; display: grid; place-items: center; font: 700 28px/1 var(--display); color: var(--ink); }
+  .first { --zoom: 9; } .first .block { height: 96px; background: var(--butter); }
+  .second { --zoom: 7; } .second .block { height: 66px; background: var(--lilac); }
+  .third { --zoom: 7; } .third .block { height: 46px; background: var(--mint); }
 
-  /* the list */
-  .rows { list-style: none; margin: 0; padding: 0; border-top: 1px solid var(--line); }
-  .row { display: grid; grid-template-columns: 3ch 60px minmax(0, 1fr) auto; gap: 12px; align-items: center; padding: 8px 2px; border-bottom: 1px solid var(--line); }
-  .row .rank { color: var(--dim); text-align: right; font-variant-numeric: tabular-nums; }
+  /* the list: one white sheet */
+  .rows { list-style: none; margin: 0; padding: 4px 14px; background: var(--cloud); border: 2px solid var(--ink); border-radius: 18px; }
+  .row { display: grid; grid-template-columns: 3ch 60px minmax(0, 1fr) auto; gap: 12px; align-items: center; padding: 9px 0; border-bottom: 2px dotted var(--sky-deep); }
+  .row:last-child, .rows .empty:last-child { border-bottom: 0; }
+  .row .rank { color: var(--soft); text-align: right; font-variant-numeric: tabular-nums; }
   .row canvas { width: 60px; height: 36px; }
   .row .who { min-width: 0; }
   .row .name { font-weight: 600; overflow-wrap: anywhere; }
-  .row .sub { color: var(--dim); font-size: 12px; }
-  .row .score { text-align: right; font-variant-numeric: tabular-nums; white-space: nowrap; }
-  .row .score small { display: block; color: var(--dim); font-size: 12px; }
-  .stage { color: var(--teal); }
-  .shiny { color: var(--pink); }
-  .empty { color: var(--dim); padding: 18px 2px; border-bottom: 1px solid var(--line); }
+  .row .sub { color: var(--soft); font-size: 12px; }
+  .row .score { text-align: right; font-variant-numeric: tabular-nums; white-space: nowrap; font-weight: 600; }
+  .row .score small { display: block; color: var(--soft); font-size: 12px; font-weight: 400; }
+  .stage { color: var(--teal-deep); font-weight: 600; }
+  .shiny { color: var(--rose-deep); }
+  .empty { color: var(--soft); padding: 16px 0; border-bottom: 2px dotted var(--sky-deep); }
+
+  .about { display: flex; flex-direction: column; gap: 8px; }
+  .about p { margin: 0; color: var(--soft); max-width: 60ch; }
+  .about p b { color: var(--ink); font-weight: 600; }
+
+  /* character cards: one candy tile per stage or item */
+  .cards { display: grid; grid-template-columns: repeat(auto-fill, minmax(124px, 1fr)); gap: 10px; }
+  .card { border-radius: 18px; padding: 12px 10px 10px; display: flex; flex-direction: column; align-items: center; gap: 4px; text-align: center; min-width: 0; background: var(--tint); border: 2px solid var(--ink); }
+  .card canvas { width: 100px; height: 60px; }
+  .card .label { font: 700 17px/1.15 var(--display); color: var(--ink); }
+  .card .how { font-size: 12px; line-height: 1.35; color: var(--ink); }
+  .card .kind { font: 600 10px/1 var(--mono); letter-spacing: 0.08em; text-transform: uppercase; color: var(--ink); background: var(--cloud); border-radius: 999px; padding: 4px 8px; margin-top: 4px; }
 
   /* get a pet */
   .get { display: flex; flex-direction: column; gap: 10px; }
   .cmd { display: flex; gap: 8px; align-items: stretch; flex-wrap: wrap; }
-  .cmd code { flex: 1 1 260px; min-width: 0; background: var(--panel); border: 1px solid var(--line); padding: 10px 12px; overflow-x: auto; white-space: nowrap; font: 500 13px/1.5 var(--mono); color: var(--cream); }
-  button { font: 600 13px/1 var(--mono); color: var(--ink); background: var(--pet); border: 0; padding: 0 16px; min-height: 40px; cursor: pointer; }
-  button:hover { background: var(--cream); }
-  .get p, .rules p { margin: 0; color: var(--dim); max-width: 62ch; }
-  .rules ul { margin: 0; padding-left: 20px; color: var(--dim); display: flex; flex-direction: column; gap: 6px; max-width: 62ch; }
-  .rules li::marker { color: var(--pet); }
-  .rules b { color: var(--cream); font-weight: 600; }
-  footer { color: var(--dim); font-size: 12px; border-top: 1px solid var(--line); padding-top: 14px; }
+  .cmd code { flex: 1 1 260px; min-width: 0; background: var(--cloud); border: 2px solid var(--ink); border-radius: 12px; padding: 10px 12px; overflow-x: auto; white-space: nowrap; font: 500 13px/1.5 var(--mono); color: var(--ink); }
+  button { font: 600 13px/1 var(--mono); color: var(--ink); background: var(--pet); border: 2px solid var(--ink); border-radius: 12px; padding: 0 16px; min-height: 44px; cursor: pointer; }
+  button:hover { background: var(--butter); }
+  .get p, .rules p { margin: 0; color: var(--soft); max-width: 62ch; }
+  .rules ul { margin: 0; padding-left: 20px; color: var(--soft); display: flex; flex-direction: column; gap: 6px; max-width: 62ch; }
+  .rules li::marker { color: var(--pet-deep); }
+  .rules b { color: var(--ink); font-weight: 600; }
+  footer { color: var(--soft); font-size: 12px; border-top: 2px dotted var(--sky-deep); padding-top: 14px; }
 </style>
 
 <div class="page">
@@ -172,7 +178,7 @@ const EXAMPLES = [
 ]
 const STAGES = [['baby', 0], ['kid', 25e3], ['teen', 250e3], ['adult', 2.5e6], ['legend', 25e6]]
 const STAGE_NOTES = { baby: 'fresh out of the egg', kid: 'grows ears', teen: 'grows a tail', adult: 'horns and wings', legend: 'all of it, in gold' }
-const TINTS = ['var(--gold)', 'var(--teal)', 'var(--violet)', 'var(--pink)', 'var(--pet)']
+const TINTS = ['var(--butter)', 'var(--mint)', 'var(--lilac)', 'var(--pink)', 'var(--peach)']
 const COLLECT = [
   ['headphones', 'Headphones', 'eat 10k tokens', 'milestone'], ['wizard', 'Wizard hat', 'eat 100k tokens', 'milestone'],
   ['crown', 'Crown', 'eat 1M tokens', 'milestone'], ['tophat', 'Top hat', 'eat 10M tokens', 'milestone'],
@@ -182,7 +188,7 @@ const COLLECT = [
   ['propeller', 'Propeller cap', 'a rare find', 'rare'], ['halo', 'Halo', 'a rare find', 'rare'],
   ['star', 'Golden star', 'a legendary find', 'legendary'], ['champion', "Champion's crown", 'be first on the board', 'only one'],
 ]
-const KIND_TINT = { milestone: 'var(--teal)', deed: 'var(--violet)', common: 'var(--dim)', rare: 'var(--pink)', legendary: 'var(--gold)', 'only one': 'var(--gold)' }
+const KIND_TINT = { milestone: 'var(--mint)', deed: 'var(--lilac)', common: 'var(--cloud)', rare: 'var(--pink)', legendary: 'var(--butter)', 'only one': 'var(--peach)' }
 
 const human = n => n >= 1e6 ? `${+(n / 1e6).toFixed(1)}M` : n >= 1e3 ? `${+(n / 1e3).toFixed(1)}k` : `${Math.round(n)}`
 const stageOf = score => STAGES.filter(([, at]) => score >= at).pop()[0]
