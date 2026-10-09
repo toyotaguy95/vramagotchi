@@ -31,8 +31,9 @@ export type Save = {
   bestMemory: number
   /** The most tokens it has caught in one catch game. */
   bestCatch: number
-  /** Its owner's longest run of blackjack hands won in a row. */
-  bestBlackjack: number
+  /** Play chips for blackjack: what the owner has now, and the most they ever had. Worth nothing, and never sent anywhere. */
+  chips: number
+  bestChips: number
 }
 
 /** The last thing the pet said about a turn: the line, until when it shows, and when it was asked for. */
@@ -53,8 +54,25 @@ export type Catch = {
   ateAt: number
 }
 
-/** A hand of blackjack against the pet: both hands as cards 0 to 51, how it ended, and the run of wins so far. */
-export type Blackjack = { isOn: boolean; isOver: boolean; you: number[]; pet: number[]; result: string; streak: number }
+/** Six decks shuffled into one order, with the seal (a SHA-256 of the salt and the order) that proves the order was not changed later. */
+export type Shoe = { cards: number[]; salt: string; seal: string }
+
+/**
+ * Blackjack against the pet. The shoe and how far into it play has got, the last shoe (opened once used up),
+ * the player's hands (two after a split), the pet's hand, and how the hand came out in chips.
+ */
+export type Blackjack = {
+  isOn: boolean
+  isOver: boolean
+  shoe: Shoe
+  at: number
+  past: (Shoe & { dealt: number }) | null
+  hands: { cards: number[]; bet: number; isDone: boolean }[]
+  active: number
+  pet: number[]
+  net: number
+  said: string
+}
 
 /** Where the pet stands on the leaderboard, as the board last said. */
 export type Standing = { rank: number | null; teamRank: number | null; score: number; sentAt: number }

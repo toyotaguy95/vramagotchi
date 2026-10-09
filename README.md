@@ -95,7 +95,13 @@ One egg in fifty hatches a shiny pet.
 
 - **Memory.** The pet shows shapes one at a time and you press them back in the same order. Each round adds one.
 - **Catch.** Tokens fall and you slide the pet under them. Three on the ground and the game is over.
-- **Blackjack.** You against the pet, who deals. Nothing is bet.
+- **Blackjack.** Las Vegas rules against the pet, who deals: six decks in a shoe, the dealer stands on every
+  17, a blackjack pays 3 to 2, double on any two cards, split a pair once. You play for play chips, which are
+  worth nothing.
+
+The pet cannot cheat at cards. A whole shoe is shuffled before the first card with your computer's secure
+random numbers, and its order is sealed with a SHA-256 that stays on screen while you play. When the shoe is
+used up (or you type `/pet play shuffle`), `/pet play proof` shows the order so you can check it against the seal.
 
 Start one with `/pet play memory`, `/pet play catch` or `/pet play blackjack`. Games are only for fun:
 they never change what your pet has eaten, its growth, or its place on the board.
@@ -127,6 +133,7 @@ team's board or join it, and a pet can be on its team without being on the publi
 | `/pet attitude <sweet, cheeky or roast>` | how it talks |
 | `/pet hide` · `/pet show` | hides it and brings it back |
 | `/pet play memory` · `/pet play catch` · `/pet play blackjack` | starts a game |
+| `/pet play blackjack 50` · `/pet play shuffle` · `/pet play proof` | bets 50 chips; starts a new shoe; shows the last shoe's order |
 | `/pet window` | gives the pet a window of its own, for VS Code and the mobile app |
 | `/pet board` · `/pet board join` · `/pet board leave` | the leaderboard, once it is open |
 | `/pet team` · `/pet team new <name>` · `/pet team join <code>` · `/pet team leave` | a private board for your team |

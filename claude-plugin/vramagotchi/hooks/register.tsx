@@ -1,7 +1,7 @@
 import { atom, read, update } from 'claude-code'
 import type { CoreEngineInterface, Register } from 'claude-code'
 
-import type { Blackjack, Catch, Context, Game, Mood, Remark, Save, Standing } from '../types'
+import type { Blackjack, Catch, Context, Game, Shoe, Mood, Remark, Save, Standing } from '../types'
 
 type Palette = Record<string, number[]>
 type Body = { face: number; lift: number; art: string[] }
@@ -109,7 +109,7 @@ const LINES: Record<Mood, string[]> = {
   squeezing: ['hnnngh', 'squeezing... it all... smaller', 'forgetting things on purpose', 'this is my cardio', 'do you even compact'],
 }
 
-const empty: Save = { name: 'Mochi', species: 'blob', born: 0, lifetime: 0, isHatched: false, isShiny: false, items: [], wearing: null, streak: 0, lastDay: 0, compactions: 0, pets: 0, isOnBoard: false, boardId: '', boardKey: '', team: '', talks: false, attitude: 'cheeky', bestMemory: 0, bestCatch: 0, bestBlackjack: 0 }
+const empty: Save = { name: 'Mochi', species: 'blob', born: 0, lifetime: 0, isHatched: false, isShiny: false, items: [], wearing: null, streak: 0, lastDay: 0, compactions: 0, pets: 0, isOnBoard: false, boardId: '', boardKey: '', team: '', talks: false, attitude: 'cheeky', bestMemory: 0, bestCatch: 0, chips: 1000, bestChips: 1000 }
 
 const save = atom({ plugin: 'vramagotchi', key: 'save' } as const, empty)
 const unsaved = atom({ plugin: 'vramagotchi', key: 'unsaved' } as const, 0)
@@ -124,7 +124,7 @@ const lastPrompt = atom({ plugin: 'vramagotchi', key: 'lastPrompt' } as const, '
 const remark = atom({ plugin: 'vramagotchi', key: 'remark' } as const, { text: '', until: 0, at: 0, problem: '' } as Remark)
 const game = atom({ plugin: 'vramagotchi', key: 'game' } as const, { isOn: false, sequence: [], step: 0, showFrom: 0, isOver: false } as Game)
 const catching = atom({ plugin: 'vramagotchi', key: 'catching' } as const, { isOn: false, isOver: false, place: 0, tokens: [], caught: 0, missed: 0, steps: 0, ateAt: -9 } as Catch)
-const table = atom({ plugin: 'vramagotchi', key: 'table' } as const, { isOn: false, isOver: false, you: [], pet: [], result: '', streak: 0 } as Blackjack)
+const table = atom({ plugin: 'vramagotchi', key: 'table' } as const, { isOn: false, isOver: false, shoe: { cards: [], salt: '', seal: '' }, at: 0, past: null, hands: [], active: 0, pet: [], net: 0, said: '' } as Blackjack)
 const isBusy = atom({ plugin: 'vramagotchi', key: 'isBusy' } as const, false)
 const squeezingSince = atom({ plugin: 'vramagotchi', key: 'squeezingSince' } as const, 0)
 const lastAnswer = atom({ plugin: 'vramagotchi', key: 'lastAnswer' } as const, '')
@@ -446,7 +446,8 @@ const settle = async ($: $): Promise<void> => {
     attitude: mine.attitude,
     bestMemory: Math.max(mine.bestMemory, kept?.bestMemory ?? 0),
     bestCatch: Math.max(mine.bestCatch, kept?.bestCatch ?? 0),
-    bestBlackjack: Math.max(mine.bestBlackjack, kept?.bestBlackjack ?? 0),
+    chips: mine.chips,
+    bestChips: Math.max(mine.bestChips, kept?.bestChips ?? 0),
   }
 
   if (pending > 0) {
@@ -777,7 +778,7 @@ const card = (pet: Save, now: number): string => {
 
   return [
     `${pet.name} the ${pet.isShiny ? 'shiny ' : ''}${STAGES[stage]?.name ?? ''} ${pet.species}`,
-    `ate ${human(pet.lifetime)} tokens · ${days} day${days === 1 ? '' : 's'} old · ${pet.streak}-day streak · petted ${pet.pets} times${pet.bestMemory > 0 ? ` · memory best ${pet.bestMemory}` : ''}${pet.bestCatch > 0 ? ` · catch best ${pet.bestCatch}` : ''}${pet.bestBlackjack > 0 ? ` · blackjack run ${pet.bestBlackjack}` : ''}`,
+    `ate ${human(pet.lifetime)} tokens · ${days} day${days === 1 ? '' : 's'} old · ${pet.streak}-day streak · petted ${pet.pets} times${pet.bestMemory > 0 ? ` · memory best ${pet.bestMemory}` : ''}${pet.bestCatch > 0 ? ` · catch best ${pet.bestCatch}` : ''}${pet.bestChips > 1000 ? ` · most chips ${pet.bestChips}` : ''}`,
     next ? `grows into ${a(next.name)} at ${human(next.at)} tokens` : 'fully grown',
     '',
     `Collection ${pet.items.length}/${ITEMS.length}`,
@@ -1003,25 +1004,29 @@ const drawCatch = async ($: $, e: Site, pet: Save, play: Catch, picture: (cells:
 }
 
 // ---- blackjack ----
-// You against the pet, who deals. Nothing is bet: not tokens, not anything. A card is a number from 0 to 51.
+// You against the pet, who deals, by the rules of a Las Vegas table: six decks in a shoe, the dealer stands on
+// every 17, a blackjack pays 3 to 2, you may double on any two cards and split a pair once.
+// The chips are play chips. They are not tokens, they are worth nothing, and they never reach the board.
+//
+// The pet cannot cheat. A whole shoe is shuffled before the first card, with the computer's secure dice, and
+// its order is sealed: the seal (a SHA-256 of the order) is on screen while you play. When the shoe is used
+// up, /pet play proof shows the order, and anyone can check that it matches the seal and the cards they saw.
 
 const RANKS = ['A', '2', '3', '4', '5', '6', '7', '8', '9', '10', 'J', 'Q', 'K']
 const SUITS = ['♠', '♥', '♦', '♣']
-
-const deal = (): number => Math.floor(Math.random() * 52)
+const DECKS = 6
+const CUT = 78                // cards left in the shoe when it is shuffled again: about three quarters dealt
+const STAKES = [10, 50, 100]
+const STACK = 1000            // the chips a player starts with, and gets again when broke
 
 const cardName = (card: number): string => `${RANKS[card % 13] ?? ''}${SUITS[Math.floor(card / 13)] ?? ''}`
 
+const points = (card: number): number => (card % 13 === 0 ? 11 : Math.min(10, (card % 13) + 1))
+
 /** What a hand is worth: an ace counts eleven until that would go over 21. */
 const worth = (hand: number[]): number => {
-  let total = 0
-  let aces = 0
-
-  for (const card of hand) {
-    const rank = card % 13
-    total += rank === 0 ? 11 : Math.min(10, rank + 1)
-    aces += rank === 0 ? 1 : 0
-  }
+  let total = hand.reduce((sum, card) => sum + points(card), 0)
+  let aces = hand.filter(card => card % 13 === 0).length
 
   while (total > 21 && aces > 0) {
     total -= 10
@@ -1031,95 +1036,259 @@ const worth = (hand: number[]): number => {
   return total
 }
 
-/** Ends a hand: the pet draws to 17, then the higher hand that is not over 21 wins. */
-const settleHand = (now: Blackjack): Blackjack => {
-  const pet = [...now.pet]
-  const mine = worth(now.you)
+const isNatural = (hand: number[]): boolean => hand.length === 2 && worth(hand) === 21
 
-  while (mine <= 21 && worth(pet) < 17) {
-    pet.push(deal())
-  }
+const asHex = (bytes: Uint8Array): string => Array.from(bytes, byte => byte.toString(16).padStart(2, '0')).join('')
 
-  const theirs = worth(pet)
-  const result = mine > 21 ? 'lost' : theirs > 21 || mine > theirs ? 'won' : mine === theirs ? 'tied' : 'lost'
+/** A whole number below `n`, every one equally likely, from the computer's secure dice. */
+const below = (n: number): number => {
+  const fair = Math.floor(0x1_0000_0000 / n) * n      // rolls at or past this would favour the low numbers, so they are thrown again
+  const roll = new Uint32Array(1)
 
-  return { ...now, pet, isOver: true, result, streak: result === 'won' ? now.streak + 1 : result === 'tied' ? now.streak : 0 }
-}
+  for (;;) {
+    crypto.getRandomValues(roll)
+    const value = roll[0] ?? 0
 
-const finishHand = async ($: $, after: Blackjack): Promise<void> => {
-  if (after.isOver && after.streak > (await read($, save)).bestBlackjack) {
-    await change($, pet => ({ ...pet, bestBlackjack: after.streak }))
+    if (value < fair) {
+      return value % n
+    }
   }
 }
 
-const startBlackjack = async ($: $): Promise<void> => {
+/** Shuffles six decks and seals the order, so it can be shown afterwards that nothing was changed during play. */
+const shuffled = async (): Promise<Shoe> => {
+  const cards = Array.from({ length: 52 * DECKS }, (_, i) => i % 52)
+
+  for (let i = cards.length - 1; i > 0; i--) {
+    const j = below(i + 1)
+    const held = cards[i] ?? 0
+    cards[i] = cards[j] ?? 0
+    cards[j] = held
+  }
+
+  const salt = asHex(crypto.getRandomValues(new Uint8Array(16)))
+  const seal = asHex(new Uint8Array(await crypto.subtle.digest('SHA-256', new TextEncoder().encode(`${salt}:${cards.join(',')}`))))
+
+  return { cards, salt, seal }
+}
+
+/** Takes the next card off the shoe. */
+const draw = (play: Blackjack): number => {
+  const card = play.shoe.cards[play.at] ?? 0
+  play.at += 1
+
+  return card
+}
+
+/** Moves on to the next hand still in play; when there is none, the pet plays its hand out and every bet is paid. Returns the chips won back. */
+const moveOn = (play: Blackjack): number => {
+  const next = play.hands.findIndex(hand => !hand.isDone)
+
+  if (next >= 0) {
+    play.active = next
+
+    return 0
+  }
+
+  if (play.hands.some(hand => worth(hand.cards) <= 21)) {
+    while (worth(play.pet) < 17) {      // it stands on every 17, soft ones too
+      play.pet.push(draw(play))
+    }
+  }
+
+  const theirs = worth(play.pet)
+  let back = 0
+  let staked = 0
+
+  for (const hand of play.hands) {
+    const mine = worth(hand.cards)
+    staked += hand.bet
+    back += mine > 21 ? 0 : theirs > 21 || mine > theirs ? hand.bet * 2 : mine === theirs ? hand.bet : 0
+  }
+
+  play.isOver = true
+  play.net = back - staked
+  play.said = play.hands.every(hand => worth(hand.cards) > 21) ? 'You went over.' : theirs > 21 ? 'The dealer went over.' : ''
+
+  return back
+}
+
+const canDouble = (play: Blackjack, chips: number): boolean => {
+  const hand = play.hands[play.active]
+
+  return !play.isOver && hand !== undefined && hand.cards.length === 2 && chips >= hand.bet
+}
+
+const canSplit = (play: Blackjack, chips: number): boolean => {
+  const hand = play.hands[play.active]
+  const [one, two] = hand?.cards ?? []
+
+  return !play.isOver && hand !== undefined && play.hands.length === 1 && hand.cards.length === 2 && one !== undefined && two !== undefined && points(one) === points(two) && chips >= hand.bet
+}
+
+/** One move at the table. Changes `play` and returns how the player's chips change. */
+const move = (play: Blackjack, chips: number, what: 'hit' | 'stand' | 'double' | 'split'): number => {
+  const hand = play.hands[play.active]
+
+  if (!play.isOn || play.isOver || !hand) {
+    return 0
+  }
+
+  let spent = 0
+
+  if (what === 'split' && canSplit(play, chips)) {
+    const [one = 0, two = 0] = hand.cards
+    const isAces = one % 13 === 0      // split aces get one card each and no more
+    spent = hand.bet
+    play.hands = [one, two].map(card => ({ cards: [card, draw(play)], bet: hand.bet, isDone: isAces }))
+    play.hands.forEach(each => {
+      each.isDone = each.isDone || worth(each.cards) === 21
+    })
+  } else if (what === 'double' && canDouble(play, chips)) {
+    spent = hand.bet
+    hand.bet *= 2
+    hand.cards.push(draw(play))
+    hand.isDone = true
+  } else if (what === 'hit') {
+    hand.cards.push(draw(play))
+    hand.isDone = worth(hand.cards) >= 21
+  } else if (what === 'stand') {
+    hand.isDone = true
+  } else {
+    return 0
+  }
+
+  return moveOn(play) - spent
+}
+
+const copyOf = (play: Blackjack): Blackjack => ({ ...play, hands: play.hands.map(hand => ({ ...hand, cards: [...hand.cards] })), pet: [...play.pet] })
+
+/** Applies a change in chips to the saved pet. A player who cannot cover the smallest bet is staked again. */
+const bank = async ($: $, by: number): Promise<void> => {
+  if (by !== 0) {
+    await change($, pet => ({ ...pet, chips: pet.chips + by, bestChips: Math.max(pet.bestChips, pet.chips + by) }))
+  }
+}
+
+const play21 = async ($: $, what: 'hit' | 'stand' | 'double' | 'split'): Promise<void> => {
+  const chips = (await read($, save)).chips
+  const play = copyOf(await read($, table))
+  const by = move(play, chips, what)
+  await update($, table, () => play)
+  await bank($, by)
+}
+
+/** Deals a hand. A shoe that has reached its cut card is put aside, its order now open to see, and a new one is shuffled and sealed. */
+const dealHand = async ($: $, wanted: number, isNewShoe = false): Promise<void> => {
   falling?.cancel()
   await update($, game, one => ({ ...one, isOn: false }))
   await update($, catching, one => ({ ...one, isOn: false }))
-  const after = await update($, table, one => {
-    const dealt: Blackjack = { isOn: true, isOver: false, you: [deal(), deal()], pet: [deal(), deal()], result: '', streak: one.streak }
+  const before = await read($, table)
+  let chips = (await read($, save)).chips
+  let said = ''
 
-    return worth(dealt.you) === 21 ? settleHand(dealt) : dealt
-  })
-  await finishHand($, after)
+  if (chips < (STAKES[0] ?? 10)) {
+    await bank($, STACK - chips)
+    chips = STACK
+    said = `You were out of chips, so ${(await read($, save)).name} staked you ${STACK} more.`
+  }
+
+  const isSpent = isNewShoe || before.shoe.cards.length === 0 || before.shoe.cards.length - before.at <= CUT
+  const play: Blackjack = {
+    ...copyOf(before),
+    isOn: true,
+    isOver: false,
+    shoe: isSpent ? await shuffled() : before.shoe,
+    at: isSpent ? 0 : before.at,
+    past: isSpent && before.shoe.cards.length > 0 ? { ...before.shoe, dealt: before.at } : before.past,
+    hands: [],
+    pet: [],
+    active: 0,
+    net: 0,
+    said,
+  }
+  const bet = Math.max(STAKES[0] ?? 10, Math.min(wanted, chips))
+  const mine = [draw(play)]
+  play.pet.push(draw(play))
+  mine.push(draw(play))
+  play.pet.push(draw(play))
+  play.hands = [{ cards: mine, bet, isDone: false }]
+  let back = 0
+
+  // The dealer looks at its hidden card when it shows an ace or a ten. A blackjack on either side ends the hand here.
+  if (isNatural(play.pet) || isNatural(mine)) {
+    back = isNatural(play.pet) ? (isNatural(mine) ? bet : 0) : bet + Math.floor((bet * 3) / 2)
+    play.isOver = true
+    play.net = back - bet
+    play.said = isNatural(mine) ? (isNatural(play.pet) ? 'Blackjack each.' : 'Blackjack! It pays 3 to 2.') : 'The dealer has blackjack.'
+  }
+
+  await update($, table, () => play)
+  await bank($, back - bet)
 }
 
-const hit = async ($: $): Promise<void> => {
-  const after = await update($, table, one => {
-    if (!one.isOn || one.isOver) {
-      return one
-    }
+/** The order of the last shoe that was used up, so its seal can be checked. */
+const proof = async ($: $): Promise<string> => {
+  const play = await read($, table)
+  const past = play.past
+  const now = play.shoe.cards.length > 0 ? `The shoe in play is sealed ${play.shoe.seal}. ${play.at} of its ${play.shoe.cards.length} cards are dealt.` : 'No shoe has been shuffled yet. /pet play blackjack deals one.'
 
-    const drawn = { ...one, you: [...one.you, deal()] }
+  if (!past) {
+    return `${now}\nIts order stays hidden until it is used up, or until you type /pet play shuffle. Then /pet play proof shows the order, so you can check it against the seal.`
+  }
 
-    return worth(drawn.you) >= 21 ? settleHand(drawn) : drawn
-  })
-  await finishHand($, after)
-}
-
-const stand = async ($: $): Promise<void> => {
-  await finishHand($, await update($, table, one => (one.isOn && !one.isOver ? settleHand(one) : one)))
+  return [
+    'The last shoe, now open:',
+    `seal   ${past.seal}`,
+    `salt   ${past.salt}`,
+    `dealt  the first ${past.dealt} cards, in this order (0 is the ace of spades, 51 the king of clubs; a card is rank = n % 13, suit = n / 13):`,
+    past.cards.join(','),
+    '',
+    'To check it, take the SHA-256 of the salt, a colon, and that list. It must equal the seal you saw while you played:',
+    `  printf '%s' '${past.salt}:<the list>' | sha256sum`,
+    '',
+    now,
+  ].join('\n')
 }
 
 const drawBlackjack = async ($: $, e: Site, pet: Save, play: Blackjack, frame: number, picture: (face: string, floats: string[]) => ReturnType<typeof h>) => {
   const { Box, Button, Text } = $.ui.resolve(e)
-  const mine = worth(play.you)
-  const said =
-    play.result === 'won'
-      ? mine === 21 && play.you.length === 2 ? 'Blackjack! You win.' : worth(play.pet) > 21 ? `${pet.name} went over. You win.` : 'You win.'
-      : play.result === 'lost'
-        ? mine > 21 ? `You went over. ${pet.name} wins.` : `${pet.name} wins.`
-        : play.result === 'tied'
-          ? 'A tie.'
-          : 'Hit or stand?'
-  const face = play.result === 'lost' ? 'happy' : play.result === 'won' ? 'out' : frame % 6 === 5 ? 'blink' : 'open'
+  const result = !play.isOver ? '' : play.net > 0 ? `You win ${play.net}.` : play.net < 0 ? `You lose ${-play.net}.` : 'A push: your bet comes back.'
+  const face = !play.isOver ? (frame % 6 === 5 ? 'blink' : 'open') : play.net < 0 ? 'happy' : play.net > 0 ? 'out' : 'open'
+  const hands = play.hands
+    .map((hand, i) => `${play.hands.length > 1 && i === play.active && !play.isOver ? '▸' : ''}${hand.cards.map(cardName).join(' ')} (${worth(hand.cards)})`)
+    .join('  |  ')
+  const staked = play.hands.reduce((sum, hand) => sum + hand.bet, 0)
 
   return (
     <Box>
-      <Box paddingTop={1}>{picture(face, play.result === 'lost' ? [frame % 2 === 0 ? 'sparkA' : 'sparkB'] : [])}</Box>
+      <Box paddingTop={1}>{picture(face, play.isOver && play.net < 0 ? [frame % 2 === 0 ? 'sparkA' : 'sparkB'] : [])}</Box>
       <Box flexDirection="column" paddingLeft={1}>
         <Text bold wrap="truncate">
           {' '}
-          {pet.name} · blackjack{play.streak > 0 ? ` · ${play.streak} won in a row` : ''}
+          {pet.name} deals blackjack · {pet.chips} chips · bet {staked}
         </Text>
-        <Box borderStyle="round" borderDimColor width={44} height={4} paddingX={1} flexDirection="column" overflow="hidden">
+        <Box borderStyle="round" borderDimColor width={52} height={4} paddingX={1} flexDirection="column" overflow="hidden">
           <Text wrap="truncate">
-            {pet.name}: {play.isOver ? `${play.pet.map(cardName).join(' ')}  (${worth(play.pet)})` : `${cardName(play.pet[0] ?? 0)} ??`}
+            {pet.name}: {play.isOver ? `${play.pet.map(cardName).join(' ')} (${worth(play.pet)})` : `${cardName(play.pet[0] ?? 0)} ??`}
           </Text>
-          <Text wrap="truncate">
-            You: {play.you.map(cardName).join(' ')}  ({mine})
-          </Text>
+          <Text wrap="truncate">You: {hands}</Text>
         </Box>
         <Text wrap="truncate">
           {' '}
-          {said}
-          {play.isOver ? ` Best run: ${Math.max(play.streak, pet.bestBlackjack)}. Nothing is bet.` : ''}
+          {[play.said, result].filter(Boolean).join(' ') || 'Your move.'}
+        </Text>
+        <Text dimColor wrap="truncate">
+          {' '}
+          shoe sealed {play.shoe.seal.slice(0, 12)} · {play.shoe.cards.length - play.at} cards left · play chips, worth nothing
         </Text>
         <Box>
-          {!play.isOver && <Button key="hit" label="Hit" hotkey="1" onPress={() => hit($)} />}
-          {!play.isOver && <Button key="stand" label="Stand" hotkey="2" onPress={() => stand($)} />}
-          {play.isOver && <Button key="again" label="Deal again" hotkey="1" onPress={() => startBlackjack($)} />}
-          <Button key="quit" label={play.isOver ? 'Done' : 'Quit'} onPress={() => update($, table, one => ({ ...one, isOn: false, streak: one.isOver ? one.streak : 0 }))} />
+          {!play.isOver && <Button key="hit" label="Hit" hotkey="1" onPress={() => play21($, 'hit')} />}
+          {!play.isOver && <Button key="stand" label="Stand" hotkey="2" onPress={() => play21($, 'stand')} />}
+          {canDouble(play, pet.chips) && <Button key="double" label="Double" hotkey="3" onPress={() => play21($, 'double')} />}
+          {canSplit(play, pet.chips) && <Button key="split" label="Split" hotkey="4" onPress={() => play21($, 'split')} />}
+          {play.isOver && STAKES.map((stake, i) => <Button key={`deal${stake}`} label={`Deal ${stake}`} hotkey={`${i + 1}`} onPress={() => dealHand($, stake)} />)}
+          <Button key="quit" label={play.isOver ? 'Done' : 'Fold'} onPress={() => update($, table, one => ({ ...one, isOn: false }))} />
         </Box>
       </Box>
     </Box>
@@ -1458,16 +1627,27 @@ export const register: Register = on => {
         }
       }
 
-      if (what.toLowerCase() === 'blackjack') {
-        await startBlackjack($)
+      const [gameName = '', stake = ''] = what.toLowerCase().split(/\s+/)
+
+      if (gameName === 'proof') {
+        return { text: await proof($) }
+      }
+
+      if (gameName === 'blackjack' || gameName === 'shuffle') {
+        await dealHand($, Number(stake) > 0 ? Math.floor(Number(stake)) : (STAKES[0] ?? 10), gameName === 'shuffle')
 
         return {
-          text: `Blackjack: you against ${pet.name}, who deals. Get closer to 21 than it does without going over. Hit takes a card, Stand stops: click them, or type 1 and 2.\nBest run of wins: ${pet.bestBlackjack}. Nothing is bet, and playing never changes what your pet has eaten.`,
+          text: [
+            `Blackjack, Las Vegas rules: ${pet.name} deals from six decks and stands on every 17. A blackjack pays 3 to 2. You may double on any two cards and split a pair once.`,
+            'Hit, Stand, Double and Split are the buttons beside it: click them, or type 1 to 4. /pet play blackjack 50 bets 50.',
+            `You have ${(await read($, save)).chips} play chips. They are not tokens and are worth nothing.`,
+            `The shoe was shuffled and sealed before the first card (seal ${(await read($, table)).shoe.seal.slice(0, 12)}). /pet play proof shows how to check that the pet did not cheat.`,
+          ].join('\n'),
         }
       }
 
       if (what.toLowerCase() !== 'memory') {
-        return { text: `${pet.name} knows three games.\n/pet play blackjack: you against ${pet.name}. Best run of wins: ${pet.bestBlackjack}.\n/pet play memory: it shows shapes, you press them back in order. Best: ${pet.bestMemory}.\n/pet play catch: slide it under falling tokens. Best: ${pet.bestCatch}.\nPlaying never changes what your pet has eaten.` }
+        return { text: `${pet.name} knows three games.\n/pet play blackjack: Las Vegas rules against ${pet.name}, for play chips. You have ${pet.chips}.\n/pet play memory: it shows shapes, you press them back in order. Best: ${pet.bestMemory}.\n/pet play catch: slide it under falling tokens. Best: ${pet.bestCatch}.\nPlaying never changes what your pet has eaten.` }
       }
 
       await startGame($)

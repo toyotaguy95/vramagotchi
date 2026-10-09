@@ -330,23 +330,67 @@ test('blackjack against the pet deals, hits, stands and ends every hand', async 
   const band = () => $.ui.mount(BAND)
   const lifetime = (kept.pet as Save).lifetime
 
-  // Blackjack: twenty hands, standing or hitting by the book, each one ends in a win, a loss or a tie.
-  await $.command.run({ command: 'pet', args: 'play blackjack' } as never)
+  // Las Vegas rules, a sealed shoe, play chips. A dozen hands, and every chip has to add up.
+  const text = async (pattern: RegExp): Promise<string> => String(((await (await band()).find({ type: 'Text', text: pattern })) as { text?: string } | undefined)?.text ?? '')
+  const chipsNow = async (): Promise<number> => Number(/(\d+) chips/.exec(await text(/ chips · bet /))?.[1])
+  const NAMES = ['A', '2', '3', '4', '5', '6', '7', '8', '9', '10', 'J', 'Q', 'K']
+  const SUITS = ['♠', '♥', '♦', '♣']
+  const cardOf = (name: string): number => NAMES.indexOf(name.slice(0, -1)) + 13 * SUITS.indexOf(name.slice(-1))
 
-  for (let hand = 0; hand < 20; hand++) {
-    for (let card = 0; card < 12 && (await (await band()).find({ type: 'Button', text: /Hit/ })); card++) {
-      const mine = Number(/You: .*\((\d+)\)/.exec(String(((await (await band()).find({ type: 'Text', text: /^You: / })) as { text?: string }).text))?.[1])
+  const intro = String(((await $.command.run({ command: 'pet', args: 'play blackjack' } as never)) as { text?: string }).text)
+  expect(intro).toContain('Las Vegas rules')
+  const seal = /seal ([a-f0-9]{12})/.exec(intro)?.[1] ?? ''
+  expect(seal.length).toBe(12)
+  const first = [...(await text(/^You: /)).matchAll(/(10|[AJQK2-9])[♠♥♦♣]/g)].map(found => cardOf(found[0]))
+  const up = cardOf(/: ((?:10|[AJQK2-9])[♠♥♦♣])/.exec(await text(/\?\?$|\(\d+\)$/))?.[1] ?? '')
+  let chips = 1000
+  let seen = { win: 0, lose: 0, push: 0 }
+
+  for (let hand = 0; hand < 12; hand++) {
+    const bet = Number(/bet (\d+)/.exec(await text(/ chips · bet /))?.[1])
+    expect(await text(/shoe sealed/)).toContain(seal)      // one shoe, one seal, the whole way through
+
+    for (let card = 0; card < 16 && (await (await band()).find({ type: 'Button', text: /Hit/ })); card++) {
+      const mine = Number(/▸[^|]*\((\d+)\)/.exec(await text(/^You: /))?.[1] ?? /\((\d+)\)/.exec(await text(/^You: /))?.[1])
       expect(mine).toBeLessThan(21)
-      expect(await (await band()).find({ type: 'Text', text: /\?\?$/ })).toBeTruthy()      // the pet's second card stays face down
-      await (await band()).press({ key: mine < 17 ? 'hit' : 'stand' } as never)
+      expect(await text(/\?\?$/)).toBeTruthy()      // the pet's second card stays face down
+      const ui = await band()
+      const key = (await ui.find({ type: 'Button', text: /Split/ })) ? 'split' : mine === 11 && (await ui.find({ type: 'Button', text: /Double/ })) ? 'double' : mine < 17 ? 'hit' : 'stand'
+      await ui.press({ key } as never)
     }
 
-    const done = await band()
-    expect(await done.find({ type: 'Text', text: /You win\.|wins\.|A tie\./ })).toBeTruthy()
-    expect(await done.find({ type: 'Text', text: /\?\?/ })).toBeFalsy()
-    await done.press({ key: 'again' } as never)
+    const said = await text(/You win \d+\.|You lose \d+\.|A push/)
+    const net = /You win (\d+)/.test(said) ? Number(/You win (\d+)/.exec(said)?.[1]) : /You lose (\d+)/.test(said) ? -Number(/You lose (\d+)/.exec(said)?.[1]) : 0
+    seen = { win: seen.win + (net > 0 ? 1 : 0), lose: seen.lose + (net < 0 ? 1 : 0), push: seen.push + (net === 0 ? 1 : 0) }
+    expect(said).toBeTruthy()
+    expect(Math.abs(net) % 5).toBe(0)
+    expect(Math.abs(net)).toBeLessThanOrEqual(bet * 4)
+    chips += net
+    expect(await chipsNow()).toBe(chips)      // what the table says you have is what the hands add up to
+    const dealer = await text(new RegExp(`^${(kept.pet as Save).name}: `))
+    expect(dealer).not.toContain('??')
+
+    if (!/You went over|blackjack|Blackjack/.test(said)) {
+      expect(Number(/\((\d+)\)$/.exec(dealer)?.[1])).toBeGreaterThanOrEqual(17)      // the dealer draws to 17
+    }
+
+    await (await band()).press({ key: 'deal10' } as never)
   }
 
-  expect((kept.pet as Save).bestBlackjack).toBeGreaterThanOrEqual(0)
+  expect(seen.win + seen.lose + seen.push).toBe(12)
   expect((kept.pet as Save).lifetime).toBe(lifetime)
+
+  // The shoe is put aside and opened: its order must hash to the seal that was on screen, and start with the cards that were dealt.
+  await $.command.run({ command: 'pet', args: 'play shuffle' } as never)
+  const opened = String(((await $.command.run({ command: 'pet', args: 'play proof' } as never)) as { text?: string }).text)
+  const salt = /salt\s+([a-f0-9]{32})/.exec(opened)?.[1] ?? ''
+  const order = /^[\d,]{600,}$/m.exec(opened)?.[0] ?? ''
+  const hash = Array.from(new Uint8Array(await crypto.subtle.digest('SHA-256', new TextEncoder().encode(`${salt}:${order}`))), byte => byte.toString(16).padStart(2, '0')).join('')
+  expect(hash.slice(0, 12)).toBe(seal)
+  expect(opened).toContain(`seal   ${hash}`)
+  const cards = order.split(',').map(Number)
+  expect(cards.length).toBe(312)
+  expect([...cards].sort((a, b) => a - b)).toEqual(Array.from({ length: 312 }, (_, i) => Math.floor(i / 6)))      // six of every card, no more, no fewer
+  expect([cards[0], cards[2]]).toEqual(first.slice(0, 2))      // dealt the Vegas way: you, the dealer, you, the dealer
+  expect(cards[1]).toBe(up)
 })
