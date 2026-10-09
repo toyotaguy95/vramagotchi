@@ -1,7 +1,7 @@
 import { atom, read, update } from 'claude-code'
 import type { CoreEngineInterface, Register } from 'claude-code'
 
-import type { Context, Mood, Remark, Save, Standing } from '../types'
+import type { Catch, Context, Game, Mood, Remark, Save, Standing } from '../types'
 
 type Palette = Record<string, number[]>
 type Body = { face: number; lift: number; art: string[] }
@@ -32,6 +32,21 @@ const BOARD_PAGE = ''         // the page people look at
 const REPORT_EVERY_MS = 10 * 60_000
 const BOARD_NAME = /^[A-Za-z0-9][A-Za-z0-9 ]{0,11}$/
 const TEAM_CODE = /^[a-z0-9]{1,12}-[a-z0-9]{8}$/      // a team is a code its members share: its name, a dash, eight random characters
+// The memory game: the pet shows shapes one at a time, and you press them back in the same order.
+const SHAPES = [
+  { mark: '▲', color: '#e23c46' },
+  { mark: '●', color: '#ffd60a' },
+  { mark: '■', color: '#40e0d0' },
+  { mark: '◆', color: '#aa82ff' },
+]
+// The catch game: tokens fall, and you slide the pet under them.
+const FIELD = { columns: 40, rows: 9 }      // the playing field, in terminal cells; twice as many pixels tall
+const SKY = 6                 // pixels of sky above the pet's head
+const SLIDE = 4               // pixels the pet moves for one press
+const PLACES = (FIELD.columns - COLUMNS) / SLIDE + 1
+const STEP_MS = 250           // how often the tokens fall
+const MISSES = 3              // tokens that may hit the ground before the game is over
+const TICKS = 100_000         // the frame counter starts over at this
 const WINDOW = 'pet'          // the id of the pet's own window
 const PIXEL = 6               // how big one pixel of the pet is drawn outside a terminal
 
@@ -88,10 +103,11 @@ const LINES: Record<Mood, string[]> = {
   fainted: ['out of context...'],
   happy: ['look at me!!', 'best day ever', 'yay!'],
   loved: ['hehe', 'again!', "you're absolutely right to pet me"],
+  playing: ['watch closely'],
   squeezing: ['hnnngh', 'squeezing... it all... smaller', 'forgetting things on purpose', 'this is my cardio', 'do you even compact'],
 }
 
-const empty: Save = { name: 'Mochi', species: 'blob', born: 0, lifetime: 0, isHatched: false, isShiny: false, items: [], wearing: null, streak: 0, lastDay: 0, compactions: 0, pets: 0, isOnBoard: false, boardId: '', boardKey: '', team: '', talks: false, attitude: 'cheeky' }
+const empty: Save = { name: 'Mochi', species: 'blob', born: 0, lifetime: 0, isHatched: false, isShiny: false, items: [], wearing: null, streak: 0, lastDay: 0, compactions: 0, pets: 0, isOnBoard: false, boardId: '', boardKey: '', team: '', talks: false, attitude: 'cheeky', bestMemory: 0, bestCatch: 0 }
 
 const save = atom({ plugin: 'vramagotchi', key: 'save' } as const, empty)
 const unsaved = atom({ plugin: 'vramagotchi', key: 'unsaved' } as const, 0)
@@ -104,6 +120,8 @@ const partyUntil = atom({ plugin: 'vramagotchi', key: 'partyUntil' } as const, 0
 const lovedUntil = atom({ plugin: 'vramagotchi', key: 'lovedUntil' } as const, 0)
 const lastPrompt = atom({ plugin: 'vramagotchi', key: 'lastPrompt' } as const, '')
 const remark = atom({ plugin: 'vramagotchi', key: 'remark' } as const, { text: '', until: 0, at: 0, problem: '' } as Remark)
+const game = atom({ plugin: 'vramagotchi', key: 'game' } as const, { isOn: false, sequence: [], step: 0, showFrom: 0, isOver: false } as Game)
+const catching = atom({ plugin: 'vramagotchi', key: 'catching' } as const, { isOn: false, isOver: false, place: 0, tokens: [], caught: 0, missed: 0, steps: 0, ateAt: -9 } as Catch)
 const isBusy = atom({ plugin: 'vramagotchi', key: 'isBusy' } as const, false)
 const squeezingSince = atom({ plugin: 'vramagotchi', key: 'squeezingSince' } as const, 0)
 const lastAnswer = atom({ plugin: 'vramagotchi', key: 'lastAnswer' } as const, '')
@@ -195,14 +213,15 @@ const colorsFor = (coats: (Palette | undefined)[]): ((ch: string | undefined) =>
 /** Turns rows of colour letters into an SVG: one square per pixel, neighbours of one colour joined into a bar. */
 const sketch: Draw = (px, coats) => {
   const color = colorsFor(coats)
+  const columns = px[0]?.length ?? 0
   let bars = ''
 
-  for (let y = 0; y < ROWS * 2; y++) {
-    for (let x = 0; x < COLUMNS; ) {
+  for (let y = 0; y < px.length; y++) {
+    for (let x = 0; x < columns; ) {
       const c = color(px[y]?.[x])
       let end = x + 1
 
-      while (end < COLUMNS && color(px[y]?.[end]) === c) {
+      while (end < columns && color(px[y]?.[end]) === c) {
         end += 1
       }
 
@@ -214,7 +233,7 @@ const sketch: Draw = (px, coats) => {
     }
   }
 
-  return `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 ${COLUMNS} ${ROWS * 2}" width="${COLUMNS * PIXEL}" height="${ROWS * 2 * PIXEL}" shape-rendering="crispEdges">${bars}</svg>`
+  return `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 ${columns} ${px.length}" width="${columns * PIXEL}" height="${px.length * PIXEL}" shape-rendering="crispEdges">${bars}</svg>`
 }
 
 /** Turns rows of colour letters into a Raster's cells: two pixels, one above the other, per character. */
@@ -227,8 +246,8 @@ const paint: Draw = (px, coats) => {
     }
   }
 
-  for (let y = 0; y < ROWS; y++) {
-    for (let x = 0; x < COLUMNS; x++) {
+  for (let y = 0; y < px.length / 2; y++) {
+    for (let x = 0; x < (px[0]?.length ?? 0); x++) {
       const up = color(px[y * 2]?.[x])
       const down = color(px[y * 2 + 1]?.[x])
 
@@ -275,36 +294,42 @@ const eggPicture = (isCracked: boolean, frame: number, draw: Draw = paint): stri
   })
 
 /** Puts a pet together: its body, its animal's head, what growing up added, its face, what it wears, what floats. */
+const petPixels = (species: string, stage: string, face: string, item: string | null, floats: string[], coats: string[]): { px: string[][]; coats: (Palette | undefined)[] } => {
+  const isBaby = stage === 'baby'
+  const body = ART.bodies[isBaby ? 'baby' : 'grown']
+  const animal = ART.species[species] ?? ART.species.blob
+
+  if (!body || !animal) {
+    return { px: [], coats: [] }
+  }
+
+  const px = body.art.map(row => [...row])
+
+  if (!isBaby) {
+    stamp(px, animal.top, 0, 0, false)
+    stamp(px, ART.growth[stage === 'legend' ? 'adult' : stage], 0, 0, false)
+  }
+
+  stamp(px, ART.faces[face], body.face, 3, true)
+
+  if (!isBaby) {
+    stamp(px, animal.after, 0, 0, false)
+  }
+
+  stamp(px, item ? ART.items[item] : undefined, body.lift, 0, false)
+
+  for (const name of floats) {
+    stamp(px, ART.floats[name], 0, 0, false)
+  }
+
+  return { px, coats: [animal.coat, stage === 'legend' ? ART.coats.legend : undefined, ...coats.map(name => ART.coats[name])] }
+}
+
 const petPicture = (species: string, stage: string, face: string, item: string | null, floats: string[], coats: string[], draw: Draw = paint): string =>
   remembered([species, stage, face, item, floats, coats, draw === paint].join('|'), () => {
-    const isBaby = stage === 'baby'
-    const body = ART.bodies[isBaby ? 'baby' : 'grown']
-    const animal = ART.species[species] ?? ART.species.blob
+    const pet = petPixels(species, stage, face, item, floats, coats)
 
-    if (!body || !animal) {
-      return ''
-    }
-
-    const px = body.art.map(row => [...row])
-
-    if (!isBaby) {
-      stamp(px, animal.top, 0, 0, false)
-      stamp(px, ART.growth[stage === 'legend' ? 'adult' : stage], 0, 0, false)
-    }
-
-    stamp(px, ART.faces[face], body.face, 3, true)
-
-    if (!isBaby) {
-      stamp(px, animal.after, 0, 0, false)
-    }
-
-    stamp(px, item ? ART.items[item] : undefined, body.lift, 0, false)
-
-    for (const name of floats) {
-      stamp(px, ART.floats[name], 0, 0, false)
-    }
-
-    return draw(px, [animal.coat, stage === 'legend' ? ART.coats.legend : undefined, ...coats.map(name => ART.coats[name])])
+    return pet.px.length ? draw(pet.px, pet.coats) : ''
   })
 
 /** What the pet looks like this instant: which face, and what floats around it. */
@@ -416,6 +441,8 @@ const settle = async ($: $): Promise<void> => {
     team: mine.team,
     talks: mine.talks,
     attitude: mine.attitude,
+    bestMemory: Math.max(mine.bestMemory, kept?.bestMemory ?? 0),
+    bestCatch: Math.max(mine.bestCatch, kept?.bestCatch ?? 0),
   }
 
   if (pending > 0) {
@@ -746,16 +773,227 @@ const card = (pet: Save, now: number): string => {
 
   return [
     `${pet.name} the ${pet.isShiny ? 'shiny ' : ''}${STAGES[stage]?.name ?? ''} ${pet.species}`,
-    `ate ${human(pet.lifetime)} tokens · ${days} day${days === 1 ? '' : 's'} old · ${pet.streak}-day streak · petted ${pet.pets} times`,
+    `ate ${human(pet.lifetime)} tokens · ${days} day${days === 1 ? '' : 's'} old · ${pet.streak}-day streak · petted ${pet.pets} times${pet.bestMemory > 0 ? ` · memory best ${pet.bestMemory}` : ''}${pet.bestCatch > 0 ? ` · catch best ${pet.bestCatch}` : ''}`,
     next ? `grows into ${a(next.name)} at ${human(next.at)} tokens` : 'fully grown',
     '',
     `Collection ${pet.items.length}/${ITEMS.length}`,
     ...list,
     '',
-    '/pet name <name> · /pet animal <kind> · /pet wear <item> · /pet wear nothing · /pet hide · /pet show · /pet window',
+    '/pet name <name> · /pet animal <kind> · /pet wear <item> · /pet wear nothing · /pet hide · /pet show · /pet window · /pet play',
     '/pet talk on · /pet talk off · /pet say · /pet attitude <sweet|cheeky|roast>',
     '/pet board · /pet board join · /pet board leave · /pet team',
   ].join('\n')
+}
+
+// ---- the memory game ----
+
+const shape = (): number => Math.floor(Math.random() * SHAPES.length)
+
+const startGame = async ($: $): Promise<void> => {
+  const frame = await read($, tick)
+  await update($, catching, one => ({ ...one, isOn: false }))
+  await update($, game, () => ({ isOn: true, sequence: [shape()], step: 0, showFrom: frame, isOver: false }))
+}
+
+/** One press of a shape: the next one right moves on, the last one right adds a shape, a wrong one ends the game. */
+const guess = async ($: $, pressed: number): Promise<void> => {
+  const play = await read($, game)
+
+  if (!play.isOn || play.isOver) {
+    return
+  }
+
+  if (play.sequence[play.step] !== pressed) {
+    const score = play.sequence.length - 1
+    await update($, game, one => ({ ...one, isOver: true }))
+
+    if (score > (await read($, save)).bestMemory) {
+      await change($, pet => ({ ...pet, bestMemory: score }))
+    }
+
+    return
+  }
+
+  const frame = await read($, tick)
+  await update($, game, one =>
+    one.step + 1 < one.sequence.length ? { ...one, step: one.step + 1 } : { ...one, sequence: [...one.sequence, shape()], step: 0, showFrom: frame },
+  )
+}
+
+/** The game in place of the pet's usual corner. It only reads the frame counter, so the showing needs no timer of its own. */
+const drawGame = async ($: $, e: Site, pet: Save, play: Game, frame: number, picture: (face: string, floats: string[]) => ReturnType<typeof h>) => {
+  const { Box, Button, Text } = $.ui.resolve(e)
+  const since = (frame - play.showFrom + TICKS) % TICKS
+  const length = play.sequence.length
+  const isShowing = !play.isOver && since < 1 + length * 2           // a beat to get ready, then each shape for one beat with a gap after it
+  const showing = isShowing && since >= 1 && (since - 1) % 2 === 0 ? SHAPES[play.sequence[(since - 1) / 2] ?? 0] : undefined
+  const score = length - 1
+  const face = play.isOver ? 'out' : isShowing ? 'open' : frame % 2 === 0 ? 'happy' : 'open'
+
+  return (
+    <Box>
+      <Box paddingTop={1}>{picture(face, play.isOver ? [] : isShowing ? [] : [frame % 2 === 0 ? 'sparkA' : 'sparkB'])}</Box>
+      <Box flexDirection="column" paddingLeft={1}>
+        <Text bold wrap="truncate">
+          {' '}
+          {pet.name} · memory game · {play.isOver ? 'over' : `round ${length}`}
+        </Text>
+        <Box borderStyle="round" borderDimColor width={44} height={4} paddingX={1} overflow="hidden">
+          {play.isOver ? (
+            <Text wrap="wrap">
+              {score > 0 ? `${pet.name} remembered ${score} in a row.` : `${pet.name} forgot the very first one.`} Best: {Math.max(score, pet.bestMemory)}.
+            </Text>
+          ) : isShowing ? (
+            <Text>
+              watch:{'   '}
+              <Text bold color={showing?.color}>
+                {showing?.mark ?? ' '}
+              </Text>
+            </Text>
+          ) : (
+            <Text>
+              your turn:{'  '}
+              {play.sequence.map((_, i) => (i < play.step ? `${SHAPES[play.sequence[i] ?? 0]?.mark ?? ''} ` : '· ')).join('')}
+            </Text>
+          )}
+        </Box>
+        <Text dimColor wrap="truncate">
+          {' '}
+          {play.isOver ? 'Playing never changes what your pet has eaten.' : isShowing ? 'Remember the order.' : 'Press them in the same order.'}
+        </Text>
+        <Box>
+          {!play.isOver &&
+            !isShowing &&
+            SHAPES.map((one, i) => <Button key={`shape${i}`} label={one.mark} hotkey={`${i + 1}`} onPress={() => guess($, i)} />)}
+          {play.isOver && <Button key="again" label="Again" hotkey="1" onPress={() => startGame($)} />}
+          <Button key="quit" label={play.isOver ? 'Done' : 'Quit'} onPress={() => update($, game, one => ({ ...one, isOn: false }))} />
+        </Box>
+      </Box>
+    </Box>
+  )
+}
+
+// ---- the catch game ----
+
+let falling: { cancel: () => void } | undefined      // the timer that makes the tokens fall while a game is on
+
+/** One beat of the game: every token drops, the ones over the pet are eaten, the ones on the ground are lost, and now and then a new one appears. */
+const fall = (now: Catch): Catch => {
+  const speed = Math.min(3, 1 + Math.floor(now.caught / 8))
+  const left = now.place * SLIDE + 2
+  const kept: Catch['tokens'] = []
+  let { caught, missed, ateAt } = now
+
+  for (const token of now.tokens) {
+    const y = token.y + speed
+
+    if (y + 1 >= SKY + 2 && token.x + 1 >= left && token.x <= left + 15) {
+      caught += 1
+      ateAt = now.steps
+    } else if (y + 1 >= FIELD.rows * 2 - 1) {
+      missed += 1
+    } else {
+      kept.push({ ...token, y })
+    }
+  }
+
+  if (now.steps % Math.max(3, 8 - Math.floor(now.caught / 4)) === 0) {
+    kept.push({ x: 2 + 2 * Math.floor(Math.random() * ((FIELD.columns - 4) / 2)), y: 0, color: pick(['y', 'c', 'v']) ?? 'y' })
+  }
+
+  return { ...now, tokens: kept, caught, missed, ateAt, steps: now.steps + 1, isOver: missed >= MISSES }
+}
+
+const startCatch = async ($: $): Promise<void> => {
+  falling?.cancel()
+  await update($, game, one => ({ ...one, isOn: false }))
+  await update($, catching, () => ({ isOn: true, isOver: false, place: Math.floor(PLACES / 2), tokens: [], caught: 0, missed: 0, steps: 0, ateAt: -9 }))
+  falling = $.clock.every(STEP_MS, () => {
+    void quietly(async () => {
+      const before = await read($, catching)
+
+      if (!before.isOn || before.isOver) {
+        falling?.cancel()
+
+        return
+      }
+
+      const after = await update($, catching, one => (one.isOn && !one.isOver ? fall(one) : one))
+
+      if (after.isOver) {
+        falling?.cancel()
+
+        if (after.caught > (await read($, save)).bestCatch) {
+          await change($, pet => ({ ...pet, bestCatch: after.caught }))
+        }
+      }
+    })
+  })
+}
+
+const slide = ($: $, by: number): Promise<Catch> =>
+  update($, catching, one => (one.isOn && !one.isOver ? { ...one, place: Math.max(0, Math.min(PLACES - 1, one.place + by)) } : one))
+
+/** The field: sky with falling tokens, and the pet at the bottom wherever it has been slid to. */
+const fieldPicture = (pet: Save, stage: string, play: Catch, draw: Draw): string => {
+  const face = play.isOver ? 'out' : play.steps - play.ateAt < 2 ? 'chew' : 'happy'
+  const sprite = petPixels(pet.species, stage, face, pet.wearing, [], pet.isShiny ? ['shiny'] : [])
+  const px = Array.from({ length: FIELD.rows * 2 }, () => Array.from({ length: FIELD.columns }, () => '.'))
+
+  sprite.px.forEach((row, y) => {
+    row.forEach((ch, x) => {
+      const line = px[SKY + y]
+
+      if (line && ch !== '.') {
+        line[play.place * SLIDE + x] = ch
+      }
+    })
+  })
+
+  for (const token of play.tokens) {
+    for (const [dx, dy] of [[0, 0], [1, 0], [0, 1], [1, 1]] as const) {
+      const line = px[token.y + dy]
+
+      if (line) {
+        line[token.x + dx] = token.color
+      }
+    }
+  }
+
+  return draw(px, sprite.coats)
+}
+
+const drawCatch = async ($: $, e: Site, pet: Save, play: Catch, picture: (cells: (draw: Draw) => string, alt: string, columns: number, rows: number) => ReturnType<typeof h>) => {
+  const { Box, Button, Text } = $.ui.resolve(e)
+  const stage = STAGES[stageOf(pet.lifetime)]?.name ?? 'baby'
+
+  return (
+    <Box>
+      {picture(draw => fieldPicture(pet, stage, play, draw), `${pet.name} catching tokens: ${play.caught} caught, ${play.missed} missed`, FIELD.columns, FIELD.rows)}
+      <Box flexDirection="column" paddingLeft={2} paddingTop={1}>
+        <Text bold>
+          {pet.name} · catch game{play.isOver ? ' · over' : ''}
+        </Text>
+        <Text>
+          caught {play.caught} · missed {'●'.repeat(play.missed).padEnd(MISSES, '○')}
+        </Text>
+        <Text dimColor>{play.isOver ? `Best: ${Math.max(play.caught, pet.bestCatch)}. Playing never changes what your pet has eaten.` : 'Slide under the falling tokens.'}</Text>
+        <Box paddingTop={1}>
+          {!play.isOver && <Button key="left" label="◀" hotkey="1" onPress={() => slide($, -1)} />}
+          {!play.isOver && <Button key="right" label="▶" hotkey="2" onPress={() => slide($, 1)} />}
+          {play.isOver && <Button key="again" label="Again" hotkey="1" onPress={() => startCatch($)} />}
+          <Button
+            key="quit"
+            label={play.isOver ? 'Done' : 'Quit'}
+            onPress={async () => {
+              falling?.cancel()
+              await update($, catching, one => ({ ...one, isOn: false }))
+            }}
+          />
+        </Box>
+      </Box>
+    </Box>
+  )
 }
 
 /**
@@ -767,16 +1005,16 @@ const drawPet = async ($: $, e: Site, isWorking: boolean, columns: number, isWin
   const pet = await read($, save)
   const { Box, Button, Text } = $.ui.resolve(e)
   // A terminal draws the pet out of half-block characters; the apps draw the same pixels as an SVG.
-  const picture = (cells: (draw: Draw) => string, alt: string) => {
+  const picture = (cells: (draw: Draw) => string, alt: string, columns = COLUMNS, rows = ROWS) => {
     if (e.surface === 'terminal') {
       const { Raster } = $.ui.resolve(e)
 
-      return <Raster key="pet" columns={COLUMNS} rows={ROWS} cells={cells(paint)} />
+      return <Raster key={columns === COLUMNS ? 'pet' : 'field'} columns={columns} rows={rows} cells={cells(paint)} />
     }
 
     const { Svg } = $.ui.resolve(e)
 
-    return <Svg source={cells(sketch)} alt={alt} width={COLUMNS * PIXEL} height={ROWS * 2 * PIXEL} />
+    return <Svg source={cells(sketch)} alt={alt} width={columns * PIXEL} height={rows * 2 * PIXEL} />
   }
 
   if (!pet.isHatched) {
@@ -791,6 +1029,22 @@ const drawPet = async ($: $, e: Site, isWorking: boolean, columns: number, isWin
           <Text>{isWorking ? "It's cracking..." : 'Send Claude a prompt to hatch it.'}</Text>
         </Box>
       </Box>
+    )
+  }
+
+  const chase = await read($, catching)
+
+  if (chase.isOn) {
+    return drawCatch($, e, pet, chase, picture)
+  }
+
+  const play = await read($, game)
+
+  if (play.isOn) {
+    const stageName = STAGES[stageOf(pet.lifetime)]?.name ?? 'baby'
+
+    return drawGame($, e, pet, play, frame, (face, floats) =>
+      picture(draw => petPicture(pet.species, stageName, face, pet.wearing, floats, pet.isShiny ? ['shiny'] : [], draw), `${pet.name} playing the memory game`),
     )
   }
 
@@ -889,6 +1143,8 @@ const drawPet = async ($: $, e: Site, isWorking: boolean, columns: number, isWin
               onPress={() => change($, one => ({ ...one, wearing: nextOutfit }))}
             />
           )}
+          <Button key="play" label="Play memory" onPress={() => startGame($)} />
+          <Button key="catch" label="Play catch" onPress={() => startCatch($)} />
           {!isWindow && (
             <Button
               key="hide"
@@ -1056,6 +1312,32 @@ export const register: Register = on => {
       await update($, isHidden, () => verb === 'hide')
 
       return { text: verb === 'hide' ? 'Pet hidden. /pet show brings it back.' : `${pet.name} is back.` }
+    }
+
+    if (verb === 'play') {
+      if (!pet.isHatched) {
+        return { text: 'Hatch your egg first: send Claude a prompt.' }
+      }
+
+      await update($, isHidden, () => false)
+
+      if (what.toLowerCase() === 'catch') {
+        await startCatch($)
+
+        return {
+          text: `Catch game: tokens fall, and ${pet.name} has to get under them. Slide it with the ◀ and ▶ buttons: click them, or type 1 for left and 2 for right. Three on the ground and it is over.\nBest so far: ${pet.bestCatch}. Playing never changes what your pet has eaten.`,
+        }
+      }
+
+      if (what.toLowerCase() !== 'memory') {
+        return { text: `${pet.name} knows two games.\n/pet play memory: it shows shapes, you press them back in order. Best: ${pet.bestMemory}.\n/pet play catch: slide it under falling tokens. Best: ${pet.bestCatch}.\nPlaying never changes what your pet has eaten.` }
+      }
+
+      await startGame($)
+
+      return {
+        text: `Memory game: ${pet.name} shows some shapes one at a time. When it is your turn, press them in the same order: click them, or type their numbers, 1 to 4. Each round adds one.\nBest so far: ${pet.bestMemory}. Playing never changes what your pet has eaten.`,
+      }
     }
 
     if (verb === 'window') {

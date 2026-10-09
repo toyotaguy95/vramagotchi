@@ -205,3 +205,100 @@ test('the pet only remarks on a turn once its owner turns that on', async ($, on
   await turn()
   expect(asked.length).toBe(2)
 })
+
+test('the memory game shows shapes, takes them back in order, and keeps the best run', async ($, on) => {
+  const clock = mock.clock(on, { now: 1_700_000_000_000 })
+  const kept: Record<string, unknown> = {}
+  on('store.get', (_, e) => ({ value: kept[e.key] }) as never)
+  on('store.set', (_, e) => {
+    kept[e.key] = e.value
+
+    return { value: undefined } as never
+  })
+  on('session.usage', () => ({ value: { startedAt: 0, context: { tokens: 50_000, window: 200_000 }, rateLimits: [] } }) as never)
+  on('turn.step', async function* (_, e) {
+    return { turnId: e.turnId, index: e.index, answer: 'ok', toolUses: [], usage: { input_tokens: 10, output_tokens: 500 } } as never
+  })
+  on('session.start', (_, e) => e as never)
+  on('turn.complete', () => ({ text: 'ok' }) as never)
+  on('command.register', () => ({ value: undefined }) as never)
+  on('ui.toast', () => ({ value: undefined }) as never)
+
+  await $.session.start({ cwd: '/tmp', surface: 'terminal', isInteractive: true })
+  for await (const _ of $.turn.step({ turnId: 't1', index: 0, model: 'test', messageCount: 1 })) {
+    // the pet eats, and hatches
+  }
+  await $.turn.complete({ answer: 'ok', durationMs: 1, isAborted: false, turnId: 't1', reason: 'answer' } as never)
+
+  const MARKS = ['▲', '●', '■', '◆']
+  const band = () => $.ui.mount(BAND)
+  const lifetime = (kept.pet as Save).lifetime
+
+  /** Watches one showing to its end and returns the shapes in the order they came up. */
+  const watch = async (): Promise<number[]> => {
+    const seen: number[] = []
+
+    for (let beat = 0; beat < 60; beat++) {
+      const ui = await band()
+
+      if (await ui.find({ type: 'Text', text: /your turn/ })) {
+        return seen
+      }
+
+      const shown = await ui.find({ type: 'Text', text: /^[▲●■◆]$/ })
+
+      if (shown) {
+        seen.push(MARKS.indexOf(String((shown as { text?: string }).text)))
+      }
+
+      await clock.advance(600)
+    }
+
+    throw new Error('the showing never ended')
+  }
+
+  expect(String(((await $.command.run({ command: 'pet', args: 'play memory' } as never)) as { text?: string }).text)).toContain('Memory game')
+  expect(await (await band()).find({ type: 'Button', text: /▲/ })).toBeFalsy()      // no pressing while it is still showing
+
+  for (const round of [1, 2, 3]) {
+    const order = await watch()
+    expect(order.length).toBe(round)
+
+    for (const one of order) {
+      await (await band()).press({ key: `shape${one}` } as never)
+    }
+  }
+
+  const order = await watch()
+  expect(order.length).toBe(4)
+  await (await band()).press({ key: `shape${((order[0] ?? 0) + 1) % 4}` } as never)      // a wrong one
+  expect(await (await band()).find({ type: 'Text', text: /remembered 3 in a row\. Best: 3\./ })).toBeTruthy()
+  expect((kept.pet as Save).bestMemory).toBe(3)
+  expect((kept.pet as Save).lifetime).toBe(lifetime)      // playing feeds nothing
+
+  await (await band()).press({ key: 'quit' } as never)
+  expect(await (await band()).find({ type: 'Text', text: /baby \w+ · idle/ })).toBeTruthy()
+
+  // The catch game: tokens fall by themselves, and three on the ground end it.
+  expect(String(((await $.command.run({ command: 'pet', args: 'play' } as never)) as { text?: string }).text)).toContain('two games')
+  await $.command.run({ command: 'pet', args: 'play catch' } as never)
+  expect(await (await band()).find({ type: 'Text', text: /catch game$/ })).toBeTruthy()
+  expect(await (await band()).find({ type: 'Raster' })).toBeTruthy()
+  await (await band()).press({ key: 'left' } as never)
+  await (await band()).press({ key: 'left' } as never)
+  await (await band()).press({ key: 'left' } as never)      // against the wall: most tokens land beside it
+
+  for (let beat = 0; beat < 400 && !(await (await band()).find({ type: 'Text', text: /catch game · over/ })); beat++) {
+    await clock.advance(250)
+  }
+
+  const over = await band()
+  expect(await over.find({ type: 'Text', text: /catch game · over/ })).toBeTruthy()
+  expect(await over.find({ type: 'Text', text: /missed ●●●/ })).toBeTruthy()
+  expect(await over.find({ type: 'Button', text: /◀/ })).toBeFalsy()
+  expect((kept.pet as Save).bestCatch).toBeGreaterThanOrEqual(0)
+  expect((kept.pet as Save).lifetime).toBe(lifetime)
+  expect(await (await $.ui.mount({ ...(BAND as object), surface: 'desktop' } as never)).find({ type: 'Svg' })).toBeTruthy()
+  await over.press({ key: 'quit' } as never)
+  expect(await (await band()).find({ type: 'Text', text: /baby \w+ · idle/ })).toBeTruthy()
+})

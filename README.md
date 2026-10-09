@@ -89,6 +89,14 @@ Pick how it talks with `/pet attitude sweet`, `cheeky` or `roast`. Roast goes af
 
 One egg in fifty hatches a shiny pet.
 
+### It plays two games
+
+- **Memory.** The pet shows shapes one at a time and you press them back in the same order. Each round adds one.
+- **Catch.** Tokens fall and you slide the pet under them. Three on the ground and the game is over.
+
+Start one with `/pet play memory` or `/pet play catch`, or the buttons beside the pet. Games are only for fun:
+they never change what your pet has eaten, its growth, or its place on the board.
+
 ### A public leaderboard (coming)
 
 A board of the best-fed pets, with a crown for first place. Your pet only appears there if you type
@@ -115,11 +123,12 @@ team's board or join it, and a pet can be on its team without being on the publi
 | `/pet say` | makes it remark on the last turn now |
 | `/pet attitude <sweet, cheeky or roast>` | how it talks |
 | `/pet hide` · `/pet show` | hides it and brings it back |
+| `/pet play memory` · `/pet play catch` | starts a game |
 | `/pet window` | gives the pet a window of its own, for VS Code and the mobile app |
 | `/pet board` · `/pet board join` · `/pet board leave` | the leaderboard, once it is open |
 | `/pet team` · `/pet team new <name>` · `/pet team join <code>` · `/pet team leave` | a private board for your team |
 
-Next to the pet there are also Pet, Wearing and Hide buttons.
+Next to the pet there are also Pet, Wearing, Play and Hide buttons.
 
 ### Where it shows up
 

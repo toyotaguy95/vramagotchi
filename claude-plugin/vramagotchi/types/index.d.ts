@@ -1,4 +1,4 @@
-export type Mood = 'egg' | 'idle' | 'eating' | 'sleeping' | 'stuffed' | 'fainted' | 'happy' | 'loved' | 'squeezing'
+export type Mood = 'egg' | 'idle' | 'eating' | 'sleeping' | 'stuffed' | 'fainted' | 'happy' | 'loved' | 'squeezing' | 'playing'
 
 export type Context = { tokens: number; window: number }
 
@@ -27,10 +27,29 @@ export type Save = {
   talks: boolean
   /** How it talks: sweet, cheeky or roast. */
   attitude: string
+  /** The longest run of shapes it has got right in the memory game. */
+  bestMemory: number
+  /** The most tokens it has caught in one catch game. */
+  bestCatch: number
 }
 
 /** The last thing the pet said about a turn: the line, until when it shows, and when it was asked for. */
 export type Remark = { text: string; until: number; at: number; problem: string }
+
+/** A memory game in progress: the shapes so far, how many of them have been pressed right, and the frame the showing began on. */
+export type Game = { isOn: boolean; sequence: number[]; step: number; showFrom: number; isOver: boolean }
+
+/** A catch game in progress: where the pet has been slid to, the tokens in the air (in pixels), and the count so far. */
+export type Catch = {
+  isOn: boolean
+  isOver: boolean
+  place: number
+  tokens: { x: number; y: number; color: string }[]
+  caught: number
+  missed: number
+  steps: number
+  ateAt: number
+}
 
 /** Where the pet stands on the leaderboard, as the board last said. */
 export type Standing = { rank: number | null; teamRank: number | null; score: number; sentAt: number }
@@ -53,6 +72,8 @@ declare module 'claude-code' {
       lastAnswer: string
       squeezingSince: number
       isBusy: boolean
+      game: Game
+      catching: Catch
     }
   }
 }
