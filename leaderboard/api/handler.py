@@ -26,6 +26,7 @@ import time
 STAGES = (("baby", 0), ("kid", 25_000), ("teen", 250_000), ("adult", 2_500_000), ("legend", 25_000_000))
 MILESTONES = {"headphones": 10_000, "wizard": 100_000, "crown": 1_000_000, "tophat": 10_000_000}
 ITEMS = set(MILESTONES) | {"bandage", "sweatband", "flame", "bow", "flower", "sprout", "propeller", "halo", "star"}
+SPECIES = {"blob", "cat", "bunny", "duck", "cactus", "ghost", "robot", "mushroom", "axolotl", "dragon"}
 
 HEAD_START = 250_000          # the most a pet may bring with it when it joins
 BELLY = 1_000_000             # the most a pet can eat in one day; it empties at this pace too
@@ -101,7 +102,7 @@ def shown(row, rank):
     wearing = row.get("wearing")
     if wearing in MILESTONES and score < MILESTONES[wearing]:
         wearing = None          # a hat it has not earned on the board's own count
-    return {"rank": rank, "name": row["name"], "score": score, "stage": stage_of(score), "shiny": bool(row.get("shiny")),
+    return {"rank": rank, "name": row["name"], "species": row.get("species", "blob"), "score": score, "stage": stage_of(score), "shiny": bool(row.get("shiny")),
             "wearing": wearing, "streak": int(row.get("streak", 0)), "days": int(row.get("days", 0)), "joined": int(row["joined"])}
 
 
@@ -134,7 +135,8 @@ def checked(body):
     items = body.get("items") if isinstance(body.get("items"), list) else []
     items = sorted({item for item in items if isinstance(item, str) and item in ITEMS})
     wearing = body.get("wearing") if body.get("wearing") in items else None
-    return {"id": pet_id, "key": key, "name": name.strip(), "lifetime": int(lifetime), "items": items, "wearing": wearing,
+    species = body.get("species") if body.get("species") in SPECIES else "blob"
+    return {"id": pet_id, "key": key, "name": name.strip(), "species": species, "lifetime": int(lifetime), "items": items, "wearing": wearing,
             "shiny": body.get("shiny") is True}
 
 
@@ -161,7 +163,7 @@ def report(body, now):
     today = now // 86_400
     if eaten > 0 and int(row["fed"]) != today:          # days and streaks run on the board's clock, not the pet's word
         row.update(days=int(row["days"]) + 1, streak=int(row["streak"]) + 1 if int(row["fed"]) == today - 1 else 1, fed=today)
-    row.update(name=seen["name"], items=seen["items"], wearing=seen["wearing"], shiny=seen["shiny"], updated=now,
+    row.update(name=seen["name"], species=seen["species"], items=seen["items"], wearing=seen["wearing"], shiny=seen["shiny"], updated=now,
                place=place(int(row["score"]), int(row["joined"])))
     store.put(row, was)
     if was is None:

@@ -103,13 +103,16 @@ class Board(unittest.TestCase):
 
     def test_the_board_is_sorted_and_shows_nothing_private(self):
         call("POST", "/pets", pet(A, lifetime=100, items=["crown", "flower", "made-up"], wearing="crown", shiny=True, streak=999))
-        call("POST", "/pets", pet(B, lifetime=20_000, name="Tofu", items=["headphones"], wearing="headphones"))
+        call("POST", "/pets", pet(B, lifetime=20_000, name="Tofu", species="duck", items=["headphones"], wearing="headphones"))
         call("POST", "/pets", pet(C, lifetime=7, name="Bean"))
         handler.store.rows[C]["hidden"] = True
         status, out = call("GET", "/board", query={"id": A})
         self.assertEqual([(p["rank"], p["name"], p["stage"], p["wearing"]) for p in out["pets"]],
                          [(1, "Tofu", "baby", "headphones"), (2, "Mochi", "baby", None)])     # an unearned crown is not shown
         self.assertEqual((out["you"]["rank"], out["you"]["shiny"], out["you"]["streak"]), (2, True, 1))     # a claimed streak is ignored
+        self.assertEqual([p["species"] for p in out["pets"]], ["duck", "blob"])
+        call("POST", "/pets", pet("d" * 32, name="Odd", species="<unicorn>"))
+        self.assertEqual(handler.store.rows["d" * 32]["species"], "blob")                                     # an animal that does not exist
         self.assertFalse({"id", "key", "lock", "counted", "belly"} & set(out["pets"][0]))
 
 

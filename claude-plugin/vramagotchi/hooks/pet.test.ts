@@ -39,7 +39,7 @@ test('an egg hatches on its first meal, then the pet earns things and survives a
 
   await clock.advance(10_000)
   const band = await $.ui.mount(BAND)
-  expect(await band.find({ type: 'Text', text: /baby · idle/ })).toBeTruthy()
+  expect(await band.find({ type: 'Text', text: /baby \w+ · idle/ })).toBeTruthy()
   expect(await band.find({ type: 'Text', text: /context ███░░░░░░░ 25%/ })).toBeTruthy()
 
   await $.session.compact({ trigger: 'manual', messages: [{ role: 'user', text: 'hello', toolUses: [], toolResults: [] }] } as never)
@@ -88,7 +88,7 @@ test('nothing reaches the leaderboard until the owner joins, and then only the p
   expect(String((joined as { text?: string }).text)).toContain('Mochi is on the board')
   expect(sent.length).toBe(1)
   expect(sent[0]?.url).toBe('https://board.test/pets')
-  expect(Object.keys(sent[0]?.body ?? {}).sort()).toEqual(['id', 'items', 'key', 'lifetime', 'name', 'shiny', 'wearing'])
+  expect(Object.keys(sent[0]?.body ?? {}).sort()).toEqual(['id', 'items', 'key', 'lifetime', 'name', 'shiny', 'species', 'wearing'])
   expect(sent[0]?.body.lifetime).toBe(12_000)
 
   await clock.advance(11 * 60_000)

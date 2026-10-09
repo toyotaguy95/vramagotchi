@@ -3,11 +3,15 @@ import type { CoreEngineInterface, Register } from 'claude-code'
 
 import type { Context, Mood, Save, Standing } from '../types'
 
-type Body = { face: number; lift: number; coat: string | null; art: string[] }
+type Palette = Record<string, number[]>
+type Body = { face: number; lift: number; art: string[] }
+type Animal = { coat: Palette; top: string[]; after: string[] }
 type Art = {
-  colors: Record<string, number[]>
-  coats: Record<string, Record<string, number[]>>
+  colors: Palette
+  coats: Record<string, Palette>
   bodies: Record<string, Body>
+  growth: Record<string, string[]>
+  species: Record<string, Animal>
   faces: Record<string, string[]>
   floats: Record<string, string[]>
   items: Record<string, string[]>
@@ -57,7 +61,7 @@ const ITEMS: Item[] = [
 ]
 
 // ART-START (written by claude-plugin/build.py)
-const ART: Art = {"colors": {"O": [112, 58, 44], "B": [226, 136, 100], "L": [255, 238, 220], "E": [38, 30, 52], "W": [255, 255, 255], "P": [255, 150, 160], "M": [120, 30, 54], "T": [246, 122, 142], "y": [255, 214, 10], "c": [64, 224, 208], "v": [170, 130, 255], "Z": [170, 205, 255], "G": [176, 176, 190], "g": [96, 96, 112], "S": [130, 205, 255], "D": [176, 74, 58], "j": [110, 200, 90], "F": [255, 120, 40], "R": [226, 60, 70], "K": [60, 60, 76]}, "coats": {"fainted": {"B": [176, 176, 190], "O": [96, 96, 112], "L": [214, 214, 224], "P": [176, 176, 190], "D": [140, 140, 156]}, "shiny": {"B": [112, 196, 255], "O": [40, 70, 140], "D": [70, 120, 220], "P": [255, 170, 210]}, "legend": {"L": [255, 232, 150], "D": [255, 196, 40]}}, "bodies": {"baby": {"face": 5, "lift": 1, "coat": null, "art": ["....................", "....................", ".........O..........", "....OOOOOOOOOOOO....", "...OBBBBBBBBBBBBO...", "..OBBBBBBBBBBBBBBO..", "..OBBBBBBBBBBBBBBO..", "..OBBBBBBBBBBBBBBO..", "..OBBBBBBBBBBBBBBO..", "...OBBLLLLLLLLBBO...", "....OOOOOOOOOOOO....", "...................."]}, "kid": {"face": 4, "lift": 0, "coat": null, "art": ["....OO........OO....", "...OBBO......OBBO...", "...OBBBOOOOOOBBBO...", "..OBBBBBBBBBBBBBBO..", "..OBBBBBBBBBBBBBBO..", "..OBBBBBBBBBBBBBBO..", "..OBBBBBBBBBBBBBBO..", "..OBBBBBBBBBBBBBBO..", "..OBBBLLLLLLLLBBBO..", "...OBBLLLLLLLLBBO...", "...OOBBBBBBBBBBOO...", "....OO.OOOOOO.OO...."]}, "teen": {"face": 4, "lift": 0, "coat": null, "art": ["..O..............O..", "..OBO..........OBO..", "..OBBOOOOOOOOOOBBO..", "..OBBBBBBBBBBBBBBO..", "..OBBBBBBBBBBBBBBO..", "..OBBBBBBBBBBBBBBO.L", "..OBBBBBBBBBBBBBBO.O", "..OBBBBBBBBBBBBBBO.O", "..OBBBLLLLLLLLBBBO.O", "...OBBLLLLLLLLBBOOO.", "...OOBBBBBBBBBBOO...", "....OO.OOOOOO.OO...."]}, "adult": {"face": 4, "lift": 0, "coat": null, "art": ["...L............L...", "...LL..........LL...", "...OLOOOOOOOOOOLO...", "D.OBBBBBBBBBBBBBBO.D", "DDOBBBBBBBBBBBBBBODD", "DDOBBBBBBBBBBBBBBODD", ".DOBBBBBBBBBBBBBBOD.", "..OBBBBBBBBBBBBBBO..", "..OBBBLLLLLLLLBBBO.D", "...OBBLLLLLLLLBBOOD.", "...OOBBBBBBBBBBOO...", "....OO.OOOOOO.OO...."]}, "legend": {"face": 4, "lift": 0, "coat": "legend", "art": ["...L............L...", "...LL..........LL...", "...OLOOOOOOOOOOLO...", "D.OBBBBBBBBBBBBBBO.D", "DDOBBBBBBBBBBBBBBODD", "DDOBBBBBBBBBBBBBBODD", ".DOBBBBBBBBBBBBBBOD.", "..OBBBBBBBBBBBBBBO..", "..OBBBLLLLLLLLBBBO.D", "...OBBLLLLLLLLBBOOD.", "...OOBBBBBBBBBBOO...", "....OO.OOOOOO.OO...."]}}, "faces": {"open": ["BBWWEBBBBWWEBB", "BBWEEBBBBWEEBB", "BPEEEBMMBEEEPB"], "blink": ["BBBBBBBBBBBBBB", "BBEEEBBBBEEEBB", "BPBBBBMMBBBBPB"], "happy": ["BBBEBBBBBBEBBB", "BBEBEBBBBEBEBB", "BPBBBMMMMBBBPB", "BBBBBMTTMBBBBB"], "chew": ["BBWWEBBBBWWEBB", "BBWEEBBBBWEEBB", "BPEEEMMMMEEEPB"], "asleep": ["BBBBBBBBBBBBBB", "BBEBEBBBBEBEBB", "BPBEBBMMBBEBPB"], "full": ["BBWWEBBBBWWEBB", "BBWEEBBBBWEEBB", "BPEEEMMMMEEEPB", "BBLLLLLLLLLLBB"], "out": ["BBEBEBBBBEBEBB", "BBBEBBBBBBEBBB", "BBEBEBMMBEBEBB", "BBBBBBTTBBBBBB"]}, "floats": {"tokensA": ["....................", "....................", "....................", "....................", "y..................c", "....................", ".c................v.", "....................", "v..................y"], "tokensB": ["....................", "....................", "....................", "....................", "...................v", "c...................", "..................y.", ".y..................", "..................c."], "zzzA": [".................ZZZ", "..................Z.", ".................ZZZ"], "zzzB": ["....................", "..................ZZ", "..................ZZ"], "sweat": ["....................", "....................", "....................", "...................S", "...................S"], "sparkA": ["y..................W", "....................", "....................", "....................", "....................", "....................", "....................", "....................", "....................", "....................", "....................", "W..................y"], "sparkB": ["....................", ".W................y.", "....................", "....................", "....................", "....................", "....................", "....................", "....................", "....................", ".y................W."], "heartsA": ["R.R..............R.R", "RRR..............RRR", ".R................R."], "heartsB": ["....................", "R.R..............R.R", ".R................R."]}, "items": {"headphones": ["....................", ".......KKKKKK.......", "....................", "....................", ".KK..............KK.", ".Kc..............cK.", ".KK..............KK."], "wizard": [".........vv.........", "........vyvv........", "......vvvvvvvv......"], "crown": [".......y.yy.y.......", ".......yRyycy......."], "tophat": ["........KKKK........", "........RRRR........", "......KKKKKKKK......"], "bandage": ["....................", "....................", "....................", "...........WWW......", "...........WRW......"], "sweatband": ["....................", "....................", "....................", "...RRRRRRWWRRRRR...."], "bow": ["............R...R...", "............RRyRR...", "............R...R..."], "flower": ["....P...............", "...PyP..............", "....P..............."], "sprout": ["........jj.j........", ".........jj.........", ".........j.........."], "propeller": ["......cccKRRR.......", "........yyyy........", ".......RRRRRR......."], "halo": [".......yyyyyy.......", "...................."], "flame": ["..........F.........", ".........FyF........", "........FFyFF......."], "star": [".........yy.........", ".......yyWWyy.......", ".........yy........."], "champion": ["......y..yy..y......", "......yy.yy.yy......", "......yRyccyRy......"]}, "egg": [["....................", ".........OO.........", ".......OOLLOO.......", "......OLLLLLLO......", ".....OLLBBLLLLO.....", ".....OLLBBLLLBO.....", "....OLLLLLLLLLLO....", "....OLLLLLBBLLLO....", "....OLLBLLBBLLLO....", "....OLLLLLLLLLLO....", ".....OLLLLLLLLO.....", "......OOOOOOOO......"], ["....................", "..........OO........", "........OOLLOO......", ".......OLLLLLLO.....", "......OLLBBLLLLO....", "......OLLBBLLLBO....", ".....OLLLLLLLLLLO...", ".....OLLLLLBBLLLO...", ".....OLLBLLBBLLLO...", ".....OLLLLLLLLLLO...", "......OLLLLLLLLO....", ".......OOOOOOOO....."], ["....................", ".........OO.........", ".......OOLLOO.......", "......OLLLLLLO......", ".....OLLBBLLLLO.....", ".....OLLBBLLLBO.....", "....OLLLLLLLLLLO....", "....OLLLLLBBLLLO....", "....OLLBLLBBLLLO....", "....OLLLLLLLLLLO....", ".....OLLLLLLLLO.....", "......OOOOOOOO......"], ["....................", "........OO..........", "......OOLLOO........", ".....OLLLLLLO.......", "....OLLBBLLLLO......", "....OLLBBLLLBO......", "...OLLLLLLLLLLO.....", "...OLLLLLBBLLLO.....", "...OLLBLLBBLLLO.....", "...OLLLLLLLLLLO.....", "....OLLLLLLLLO......", ".....OOOOOOOO......."]], "cracked": [["....................", ".........OO.........", ".......OOLLOO.......", "......OLLLLLLO......", ".....OLLBBLLLLO.....", ".....OLOBLLOLBO.....", "....OOLOLOOLOLOO....", "....OLLOLLBBOLLO....", "....OLLBLLBBLLLO....", "....OLLLLLLLLLLO....", ".....OLLLLLLLLO.....", "......OOOOOOOO......"], ["....................", "..........OO........", "........OOLLOO......", ".......OLLLLLLO.....", "......OLLBBLLLLO....", "......OLOBLLOLBO....", ".....OOLOLOOLOLOO...", ".....OLLOLLBBOLLO...", ".....OLLBLLBBLLLO...", ".....OLLLLLLLLLLO...", "......OLLLLLLLLO....", ".......OOOOOOOO....."], ["....................", ".........OO.........", ".......OOLLOO.......", "......OLLLLLLO......", ".....OLLBBLLLLO.....", ".....OLOBLLOLBO.....", "....OOLOLOOLOLOO....", "....OLLOLLBBOLLO....", "....OLLBLLBBLLLO....", "....OLLLLLLLLLLO....", ".....OLLLLLLLLO.....", "......OOOOOOOO......"], ["....................", "........OO..........", "......OOLLOO........", ".....OLLLLLLO.......", "....OLLBBLLLLO......", "....OLOBLLOLBO......", "...OOLOLOOLOLOO.....", "...OLLOLLBBOLLO.....", "...OLLBLLBBLLLO.....", "...OLLLLLLLLLLO.....", "....OLLLLLLLLO......", ".....OOOOOOOO......."]]}
+const ART: Art = {"colors": {"O": [112, 58, 44], "B": [226, 136, 100], "L": [255, 238, 220], "E": [38, 30, 52], "W": [255, 255, 255], "P": [255, 150, 160], "M": [120, 30, 54], "T": [246, 122, 142], "y": [255, 214, 10], "c": [64, 224, 208], "v": [170, 130, 255], "Z": [170, 205, 255], "G": [176, 176, 190], "g": [96, 96, 112], "S": [130, 205, 255], "D": [176, 74, 58], "j": [110, 200, 90], "F": [255, 120, 40], "R": [226, 60, 70], "K": [60, 60, 76]}, "coats": {"fainted": {"B": [176, 176, 190], "O": [96, 96, 112], "L": [214, 214, 224], "P": [176, 176, 190], "D": [140, 140, 156]}, "shiny": {"B": [112, 196, 255], "O": [40, 70, 140], "D": [70, 120, 220], "P": [255, 170, 210]}, "legend": {"L": [255, 232, 150], "D": [255, 196, 40]}}, "bodies": {"baby": {"face": 5, "lift": 1, "art": ["....................", "....................", ".........O..........", "....OOOOOOOOOOOO....", "...OBBBBBBBBBBBBO...", "..OBBBBBBBBBBBBBBO..", "..OBBBBBBBBBBBBBBO..", "..OBBBBBBBBBBBBBBO..", "..OBBBBBBBBBBBBBBO..", "...OBBLLLLLLLLBBO...", "....OOOOOOOOOOOO....", "...................."]}, "grown": {"face": 4, "lift": 0, "art": ["....................", "....................", "...OOOOOOOOOOOOOO...", "..OBBBBBBBBBBBBBBO..", "..OBBBBBBBBBBBBBBO..", "..OBBBBBBBBBBBBBBO..", "..OBBBBBBBBBBBBBBO..", "..OBBBBBBBBBBBBBBO..", "..OBBBLLLLLLLLBBBO..", "...OBBLLLLLLLLBBO...", "...OOBBBBBBBBBBOO...", "....OO.OOOOOO.OO...."]}}, "growth": {"teen": ["....................", "....................", "....................", "....................", "....................", "...................L", "...................O", "...................O", "...................O", ".................OO."], "adult": ["....................", "....................", "....................", "D..................D", "DD................DD", "DD................DD", ".D................D.", "....................", "...................D", "..................D."]}, "species": {"blob": {"coat": {}, "top": ["....OO........OO....", "...OBBO......OBBO...", "...OBBB......BBBO..."], "after": []}, "cat": {"coat": {"B": [178, 176, 200], "O": [78, 72, 104], "L": [242, 240, 250], "D": [120, 114, 156]}, "top": ["...O............O...", "...OBO........OBO...", "...OBPB......BPBO..."], "after": []}, "bunny": {"coat": {"B": [255, 232, 238], "O": [172, 108, 132], "L": [255, 255, 255], "D": [236, 150, 178]}, "top": ["....OBO......OBO....", "....OPO......OPO....", "....OPO......OPO...."], "after": []}, "duck": {"coat": {"B": [255, 216, 92], "O": [158, 104, 30], "L": [255, 244, 204], "D": [240, 160, 40]}, "top": ["..........O.........", ".........OBO........", ".........BBB........"], "after": ["....................", "....................", "....................", "....................", "....................", "....................", "........FFFF........", ".........FF........."]}, "cactus": {"coat": {"B": [122, 198, 106], "O": [44, 104, 62], "L": [192, 234, 162], "D": [70, 150, 80]}, "top": [".........PP.........", "........PyyP........", ".........PP........."], "after": ["....................", "....................", "....................", "......O......O......", "....................", "....................", "....................", "....................", "....O..........O...."]}, "ghost": {"coat": {"B": [238, 238, 250], "O": [128, 124, 168], "L": [255, 255, 255], "P": [255, 176, 196], "D": [190, 190, 232]}, "top": ["....................", "....................", "...................."], "after": ["....................", "....................", "....................", "....................", "....................", "....................", "....................", "....................", "....................", "..OBBBLLLLLLLLBBBO..", "..OBBOBBBOOBBBOBBO..", "..OO_O_OO__OO_O_OO.."]}, "robot": {"coat": {"B": [178, 190, 206], "O": [66, 76, 100], "L": [222, 232, 242], "P": [110, 215, 255], "D": [110, 124, 150]}, "top": [".........R..........", ".........g..........", "..OOOOOOOOOOOOOOOO.."], "after": ["....................", "....................", "....................", "....................", "....................", ".g................g."]}, "mushroom": {"coat": {"B": [248, 230, 205], "O": [122, 70, 62], "L": [255, 246, 232], "D": [226, 60, 70]}, "top": ["....OOOOOOOOOOOO....", "..OORRWWRRRRRWRROO..", ".ORRRWWRRRRWWRRRRRO.", ".OOOOOOOOOOOOOOOOOO."], "after": []}, "axolotl": {"coat": {"B": [255, 174, 194], "O": [176, 84, 122], "L": [255, 226, 234], "P": [255, 104, 150], "D": [240, 110, 160]}, "top": ["....................", "....................", "...................."], "after": ["....................", "....................", "....................", "PP................PP", ".P................P.", "PP................PP"]}, "dragon": {"coat": {"B": [120, 204, 156], "O": [40, 98, 92], "L": [232, 246, 204], "D": [60, 152, 132]}, "top": ["...L............L...", "...LL..........LL...", "...OL..........LO..."], "after": []}}, "faces": {"open": ["BBWWEBBBBWWEBB", "BBWEEBBBBWEEBB", "BPEEEBMMBEEEPB"], "blink": ["BBBBBBBBBBBBBB", "BBEEEBBBBEEEBB", "BPBBBBMMBBBBPB"], "happy": ["BBBEBBBBBBEBBB", "BBEBEBBBBEBEBB", "BPBBBMMMMBBBPB", "BBBBBMTTMBBBBB"], "chew": ["BBWWEBBBBWWEBB", "BBWEEBBBBWEEBB", "BPEEEMMMMEEEPB"], "asleep": ["BBBBBBBBBBBBBB", "BBEBEBBBBEBEBB", "BPBEBBMMBBEBPB"], "full": ["BBWWEBBBBWWEBB", "BBWEEBBBBWEEBB", "BPEEEMMMMEEEPB", "BBLLLLLLLLLLBB"], "out": ["BBEBEBBBBEBEBB", "BBBEBBBBBBEBBB", "BBEBEBMMBEBEBB", "BBBBBBTTBBBBBB"]}, "floats": {"tokensA": ["....................", "....................", "....................", "....................", "y..................c", "....................", ".c................v.", "....................", "v..................y"], "tokensB": ["....................", "....................", "....................", "....................", "...................v", "c...................", "..................y.", ".y..................", "..................c."], "zzzA": [".................ZZZ", "..................Z.", ".................ZZZ"], "zzzB": ["....................", "..................ZZ", "..................ZZ"], "sweat": ["....................", "....................", "....................", "...................S", "...................S"], "sparkA": ["y..................W", "....................", "....................", "....................", "....................", "....................", "....................", "....................", "....................", "....................", "....................", "W..................y"], "sparkB": ["....................", ".W................y.", "....................", "....................", "....................", "....................", "....................", "....................", "....................", "....................", ".y................W."], "heartsA": ["R.R..............R.R", "RRR..............RRR", ".R................R."], "heartsB": ["....................", "R.R..............R.R", ".R................R."]}, "items": {"headphones": ["....................", ".......KKKKKK.......", "....................", "....................", ".KK..............KK.", ".Kc..............cK.", ".KK..............KK."], "wizard": [".........vv.........", "........vyvv........", "......vvvvvvvv......"], "crown": [".......y.yy.y.......", ".......yRyycy......."], "tophat": ["........KKKK........", "........RRRR........", "......KKKKKKKK......"], "bandage": ["....................", "....................", "....................", "...........WWW......", "...........WRW......"], "sweatband": ["....................", "....................", "....................", "...RRRRRRWWRRRRR...."], "bow": ["............R...R...", "............RRyRR...", "............R...R..."], "flower": ["....P...............", "...PyP..............", "....P..............."], "sprout": ["........jj.j........", ".........jj.........", ".........j.........."], "propeller": ["......cccKRRR.......", "........yyyy........", ".......RRRRRR......."], "halo": [".......yyyyyy.......", "...................."], "flame": ["..........F.........", ".........FyF........", "........FFyFF......."], "star": [".........yy.........", ".......yyWWyy.......", ".........yy........."], "champion": ["......y..yy..y......", "......yy.yy.yy......", "......yRyccyRy......"]}, "egg": [["....................", ".........OO.........", ".......OOLLOO.......", "......OLLLLLLO......", ".....OLLBBLLLLO.....", ".....OLLBBLLLBO.....", "....OLLLLLLLLLLO....", "....OLLLLLBBLLLO....", "....OLLBLLBBLLLO....", "....OLLLLLLLLLLO....", ".....OLLLLLLLLO.....", "......OOOOOOOO......"], ["....................", "..........OO........", "........OOLLOO......", ".......OLLLLLLO.....", "......OLLBBLLLLO....", "......OLLBBLLLBO....", ".....OLLLLLLLLLLO...", ".....OLLLLLBBLLLO...", ".....OLLBLLBBLLLO...", ".....OLLLLLLLLLLO...", "......OLLLLLLLLO....", ".......OOOOOOOO....."], ["....................", ".........OO.........", ".......OOLLOO.......", "......OLLLLLLO......", ".....OLLBBLLLLO.....", ".....OLLBBLLLBO.....", "....OLLLLLLLLLLO....", "....OLLLLLBBLLLO....", "....OLLBLLBBLLLO....", "....OLLLLLLLLLLO....", ".....OLLLLLLLLO.....", "......OOOOOOOO......"], ["....................", "........OO..........", "......OOLLOO........", ".....OLLLLLLO.......", "....OLLBBLLLLO......", "....OLLBBLLLBO......", "...OLLLLLLLLLLO.....", "...OLLLLLBBLLLO.....", "...OLLBLLBBLLLO.....", "...OLLLLLLLLLLO.....", "....OLLLLLLLLO......", ".....OOOOOOOO......."]], "cracked": [["....................", ".........OO.........", ".......OOLLOO.......", "......OLLLLLLO......", ".....OLLBBLLLLO.....", ".....OLOBLLOLBO.....", "....OOLOLOOLOLOO....", "....OLLOLLBBOLLO....", "....OLLBLLBBLLLO....", "....OLLLLLLLLLLO....", ".....OLLLLLLLLO.....", "......OOOOOOOO......"], ["....................", "..........OO........", "........OOLLOO......", ".......OLLLLLLO.....", "......OLLBBLLLLO....", "......OLOBLLOLBO....", ".....OOLOLOOLOLOO...", ".....OLLOLLBBOLLO...", ".....OLLBLLBBLLLO...", ".....OLLLLLLLLLLO...", "......OLLLLLLLLO....", ".......OOOOOOOO....."], ["....................", ".........OO.........", ".......OOLLOO.......", "......OLLLLLLO......", ".....OLLBBLLLLO.....", ".....OLOBLLOLBO.....", "....OOLOLOOLOLOO....", "....OLLOLLBBOLLO....", "....OLLBLLBBLLLO....", "....OLLLLLLLLLLO....", ".....OLLLLLLLLO.....", "......OOOOOOOO......"], ["....................", "........OO..........", "......OOLLOO........", ".....OLLLLLLO.......", "....OLLBBLLLLO......", "....OLOBLLOLBO......", "...OOLOLOOLOLOO.....", "...OLLOLLBBOLLO.....", "...OLLBLLBBLLLO.....", "...OLLLLLLLLLLO.....", "....OLLLLLLLLO......", ".....OOOOOOOO......."]]}
 // ART-END
 
 const LINES: Record<Mood, string[]> = {
@@ -71,7 +75,7 @@ const LINES: Record<Mood, string[]> = {
   loved: ['hehe', 'again!', "you're absolutely right to pet me"],
 }
 
-const empty: Save = { name: 'Mochi', born: 0, lifetime: 0, isHatched: false, isShiny: false, items: [], wearing: null, streak: 0, lastDay: 0, compactions: 0, pets: 0, isOnBoard: false, boardId: '', boardKey: '' }
+const empty: Save = { name: 'Mochi', species: 'blob', born: 0, lifetime: 0, isHatched: false, isShiny: false, items: [], wearing: null, streak: 0, lastDay: 0, compactions: 0, pets: 0, isOnBoard: false, boardId: '', boardKey: '' }
 
 const save = atom({ plugin: 'vramagotchi', key: 'save' } as const, empty)
 const unsaved = atom({ plugin: 'vramagotchi', key: 'unsaved' } as const, 0)
@@ -97,7 +101,7 @@ const stageOf = (lifetime: number): number => STAGES.reduce((found, stage, i) =>
 
 const dayOf = (now: number): number => Math.floor((now - new Date(now).getTimezoneOffset() * 60_000) / 86_400_000)
 
-const fresh = (now: number): Save => ({ ...empty, name: pick(NAMES) ?? 'Mochi', born: now, isShiny: Math.random() < SHINY_ODDS })
+const fresh = (now: number): Save => ({ ...empty, name: pick(NAMES) ?? 'Mochi', species: pick(Object.keys(ART.species)) ?? 'blob', born: now, isShiny: Math.random() < SHINY_ODDS })
 
 const asSave = (value: unknown, now: number): Save | undefined =>
   typeof value === 'object' && value !== null && typeof (value as Save).lifetime === 'number'
@@ -122,18 +126,18 @@ const stamp = (px: string[][], art: string[] | undefined, top: number, left: num
       const ch = line[dx] ?? '.'
 
       if (isSolid || ch !== '.') {
-        row[left + dx] = ch
+        row[left + dx] = ch === '_' ? '.' : ch     // an underscore rubs a pixel out
       }
     }
   })
 }
 
 /** Turns rows of colour letters into a Raster's cells: two pixels, one above the other, per character. */
-const paint = (px: string[][], coats: (string | null)[]): string => {
-  const palette: Record<string, number[]> = { ...ART.colors }
+const paint = (px: string[][], coats: (Palette | undefined)[]): string => {
+  const palette: Palette = { ...ART.colors }
 
   for (const coat of coats) {
-    Object.assign(palette, (coat && ART.coats[coat]) || {})
+    Object.assign(palette, coat ?? {})
   }
 
   const color = (ch: string | undefined): number => {
@@ -195,23 +199,37 @@ const eggPicture = (isCracked: boolean, frame: number): string =>
     return paint((frames[frame % 4] ?? []).map(row => [...row]), [])
   })
 
-const petPicture = (stage: string, face: string, item: string | null, floats: string[], coats: string[]): string =>
-  remembered([stage, face, item, floats, coats].join('|'), () => {
-    const body = ART.bodies[stage]
+/** Puts a pet together: its body, its animal's head, what growing up added, its face, what it wears, what floats. */
+const petPicture = (species: string, stage: string, face: string, item: string | null, floats: string[], coats: string[]): string =>
+  remembered([species, stage, face, item, floats, coats].join('|'), () => {
+    const isBaby = stage === 'baby'
+    const body = ART.bodies[isBaby ? 'baby' : 'grown']
+    const animal = ART.species[species] ?? ART.species.blob
 
-    if (!body) {
+    if (!body || !animal) {
       return ''
     }
 
     const px = body.art.map(row => [...row])
+
+    if (!isBaby) {
+      stamp(px, animal.top, 0, 0, false)
+      stamp(px, ART.growth[stage === 'legend' ? 'adult' : stage], 0, 0, false)
+    }
+
     stamp(px, ART.faces[face], body.face, 3, true)
+
+    if (!isBaby) {
+      stamp(px, animal.after, 0, 0, false)
+    }
+
     stamp(px, item ? ART.items[item] : undefined, body.lift, 0, false)
 
     for (const name of floats) {
       stamp(px, ART.floats[name], 0, 0, false)
     }
 
-    return paint(px, [body.coat, ...coats])
+    return paint(px, [animal.coat, stage === 'legend' ? ART.coats.legend : undefined, ...coats.map(name => ART.coats[name])])
   })
 
 /** What the pet looks like this instant: which face, and what floats around it. */
@@ -322,7 +340,7 @@ const settle = async ($: $): Promise<void> => {
     if (!pet.isHatched) {
       pet.isHatched = true
       pet.born = now
-      news.push(`Your egg hatched! Meet ${pet.name}${pet.isShiny ? ', a rare shiny one' : ''}.`)
+      news.push(`Your egg hatched! Meet ${pet.name}, a baby ${pet.species}${pet.isShiny ? ' and a rare shiny one' : ''}. /pet animal picks a different animal.`)
     }
   }
 
@@ -375,7 +393,7 @@ const report = async ($: $, isForced = false): Promise<string | undefined> => {
   const answer = await $.http.fetch(`${api}/pets`, {
     method: 'POST',
     headers: { 'content-type': 'application/json' },
-    body: JSON.stringify({ id: pet.boardId, key: pet.boardKey, name: pet.name, lifetime: Math.round(pet.lifetime), items: pet.items, wearing: pet.wearing, shiny: pet.isShiny }),
+    body: JSON.stringify({ id: pet.boardId, key: pet.boardKey, name: pet.name, species: pet.species, lifetime: Math.round(pet.lifetime), items: pet.items, wearing: pet.wearing, shiny: pet.isShiny }),
   })
   const got = asJson(answer.text)
 
@@ -460,14 +478,14 @@ const card = (pet: Save, now: number): string => {
   )
 
   return [
-    `${pet.name} the ${pet.isShiny ? 'shiny ' : ''}${STAGES[stage]?.name ?? ''}`,
+    `${pet.name} the ${pet.isShiny ? 'shiny ' : ''}${STAGES[stage]?.name ?? ''} ${pet.species}`,
     `ate ${human(pet.lifetime)} tokens · ${days} day${days === 1 ? '' : 's'} old · ${pet.streak}-day streak · petted ${pet.pets} times`,
     next ? `grows into ${a(next.name)} at ${human(next.at)} tokens` : 'fully grown',
     '',
     `Collection ${pet.items.length}/${ITEMS.length}`,
     ...list,
     '',
-    '/pet name <name> · /pet wear <item> · /pet wear nothing · /pet hide · /pet show',
+    '/pet name <name> · /pet animal <kind> · /pet wear <item> · /pet wear nothing · /pet hide · /pet show',
     '/pet board · /pet board join · /pet board leave',
   ].join('\n')
 }
@@ -599,6 +617,19 @@ export const register: Register = on => {
       return { text: `Your pet is now called ${name}.` }
     }
 
+    if (verb === 'animal' || verb === 'species') {
+      const kinds = Object.keys(ART.species)
+      const kind = what.toLowerCase()
+
+      if (!kinds.includes(kind)) {
+        return { text: `${pet.name} is ${a(pet.species)}. It can be: ${kinds.join(', ')}.\nChange it with /pet animal <kind>.` }
+      }
+
+      await change($, one => ({ ...one, species: kind }))
+
+      return { text: `${pet.name} is ${a(kind)} now.` }
+    }
+
     if (verb === 'board') {
       try {
         return { text: await boardCommand($, what) }
@@ -681,11 +712,11 @@ export const register: Register = on => {
 
     return (
       <Box paddingTop={1}>
-        <Raster key="pet" columns={COLUMNS} rows={ROWS} cells={petPicture(stageName, face, wearing, floats, coats)} />
+        <Raster key="pet" columns={COLUMNS} rows={ROWS} cells={petPicture(pet.species, stageName, face, wearing, floats, coats)} />
         <Box flexDirection="column" paddingLeft={2}>
           <Text bold>
             {pet.isShiny ? '✦ ' : ''}
-            {pet.name} · {stageName} · {mood}
+            {pet.name} · {stageName} {pet.species} · {mood}
             {rank ? ` · #${rank}` : ''}
           </Text>
           <Text dimColor>"{line}"</Text>

@@ -5,6 +5,8 @@ export type Context = { tokens: number; window: number }
 /** Everything a pet remembers between sessions. */
 export type Save = {
   name: string
+  /** Which animal it is: one of the kinds in the art. */
+  species: string
   born: number
   lifetime: number
   isHatched: boolean
