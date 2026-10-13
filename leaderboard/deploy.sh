@@ -15,7 +15,7 @@ UPLOADS=vramagotchi-uploads-$ACCOUNT-$REGION        # where the function's code 
 aws s3api head-bucket --bucket "$UPLOADS" 2>/dev/null || aws s3 mb "s3://$UPLOADS" --region "$REGION"
 aws cloudformation package --region "$REGION" --template-file template.yaml --s3-bucket "$UPLOADS" --output-template-file .packaged.yaml
 aws cloudformation deploy --region "$REGION" --stack-name "$STACK" --template-file .packaged.yaml \
-    --capabilities CAPABILITY_IAM CAPABILITY_AUTO_EXPAND --parameter-overrides AlertEmail="${ALERT_EMAIL:-}"
+    --capabilities CAPABILITY_IAM CAPABILITY_AUTO_EXPAND --no-fail-on-empty-changeset --parameter-overrides AlertEmail="${ALERT_EMAIL:-}"
 
 output() { aws cloudformation describe-stacks --region "$REGION" --stack-name "$STACK" --query "Stacks[0].Outputs[?OutputKey=='$1'].OutputValue" --output text; }
 API=$(output ApiUrl); PAGE=$(output PageUrl); BUCKET=$(output PageBucketName)
@@ -30,4 +30,5 @@ rm -f .index.html .packaged.yaml
 echo
 echo "Board page:  $PAGE"
 echo "Board API:   $API"
-echo "Now set BOARD_API and BOARD_PAGE near the top of claude-plugin/vramagotchi/hooks/register.tsx to those two."
+echo "A changed page shows up within five minutes. BOARD_API and BOARD_PAGE near the top of"
+echo "claude-plugin/vramagotchi/hooks/register.tsx should be those two addresses."
