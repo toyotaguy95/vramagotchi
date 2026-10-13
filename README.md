@@ -133,15 +133,15 @@ used up (or you type `/pet play shuffle`), `/pet play proof` shows the order so 
 Start one with `/pet play memory`, `/pet play catch` or `/pet play blackjack`. Games are only for fun:
 they never change what your pet has eaten, its growth, or its place on the board.
 
-### A public leaderboard (coming)
+### A public leaderboard
 
-A board of the best-fed pets, with a crown for first place. Your pet only appears there if you type
-`/pet board join`. The code is in [`leaderboard/`](leaderboard/), including how it keeps made-up numbers
-from winning. It is not live yet.
+**[The board](https://diqgvf4dpjwp.cloudfront.net)** shows the best-fed pets, with a crown for first place. Your
+pet only appears there if you type `/pet board join`, and `/pet board leave` takes it off again.
 
 Once a pet is on the board, the board rolls its luck: whether it is shiny and what it finds while it eats.
+The code is in [`leaderboard/`](leaderboard/), including how it keeps made-up numbers from winning.
 
-### Team boards (coming with the leaderboard)
+### Team boards
 
 A board for just your team or company. `/pet team new acme` starts one and gives you a code like
 `acme-k3x9q2ab`. Teammates type `/pet team join acme-k3x9q2ab`. Only people who have the code can see the
@@ -163,7 +163,7 @@ team's board or join it, and a pet can be on its team without being on the publi
 | `/pet play memory` · `/pet play catch` · `/pet play blackjack` | starts a game |
 | `/pet play blackjack 50` · `/pet play shuffle` · `/pet play proof` | bets 50 chips; starts a new shoe; shows the last shoe's order |
 | `/pet window` | gives the pet a window of its own, for VS Code and the mobile app |
-| `/pet board` · `/pet board join` · `/pet board leave` | the leaderboard, once it is open |
+| `/pet board` · `/pet board join` · `/pet board leave` | the public leaderboard |
 | `/pet team` · `/pet team new <name>` · `/pet team join <code>` · `/pet team leave` | a private board for your team |
 
 Next to the pet there are also Pet, Wearing and Hide buttons.

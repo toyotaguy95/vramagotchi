@@ -56,7 +56,8 @@ Needs the AWS CLI, signed in to your account.
 ALERT_EMAIL=you@example.com leaderboard/deploy.sh
 ```
 
-It prints the page's address and the API's address. Put those two in `BOARD_API` and `BOARD_PAGE` near the
-top of `claude-plugin/vramagotchi/hooks/register.tsx`.
+It prints the page's address and the API's address. Those two go in `BOARD_API` and `BOARD_PAGE` near the
+top of `claude-plugin/vramagotchi/hooks/register.tsx`. Run it again after any change; a changed page shows
+up within five minutes.
 
 To take it all down again: `aws cloudformation delete-stack --stack-name vramagotchi-board` (empty the page bucket first).
