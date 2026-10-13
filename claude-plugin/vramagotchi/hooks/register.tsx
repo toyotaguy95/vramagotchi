@@ -1787,8 +1787,11 @@ export const register: Register = on => {
   })
 
   on('command.run', { command: 'pet' }, async ($, e) => {
-    const [verb = '', ...rest] = e.args.trim().split(/\s+/)
-    const what = rest.join(' ')
+    const [typed = '', ...rest] = e.args.trim().split(/\s+/)
+    // People reach for a game by its own name: "/pet blackjack" and "/pet game blackjack" mean "/pet play blackjack".
+    const isGame = ['blackjack', 'memory', 'catch'].includes(typed.toLowerCase())
+    const verb = isGame || typed === 'game' || typed === 'games' ? 'play' : typed
+    const what = (isGame ? [typed, ...rest] : rest).join(' ')
     const pet = await read($, save)
 
     if (verb === 'hide' || verb === 'show') {

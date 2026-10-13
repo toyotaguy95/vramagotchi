@@ -327,7 +327,7 @@ test('the memory game shows shapes, takes them back in order, and keeps the best
 
   // The catch game: tokens fall by themselves, and three on the ground end it.
   expect(String(((await $.command.run({ command: 'pet', args: 'play' } as never)) as { text?: string }).text)).toContain('three games')
-  await $.command.run({ command: 'pet', args: 'play catch' } as never)
+  await $.command.run({ command: 'pet', args: 'game catch' } as never)      // "game" and the bare name work as well as "play"
   expect(await (await band()).find({ type: 'Text', text: /catch game$/ })).toBeTruthy()
   expect(await (await band()).find({ type: 'Raster' })).toBeTruthy()
   await (await band()).press({ key: 'left' } as never)
@@ -383,7 +383,7 @@ test('blackjack against the pet deals, hits, stands and ends every hand', async 
   const SUITS = ['♠', '♥', '♦', '♣']
   const cardOf = (name: string): number => NAMES.indexOf(name.slice(0, -1)) + 13 * SUITS.indexOf(name.slice(-1))
 
-  const intro = String(((await $.command.run({ command: 'pet', args: 'play blackjack' } as never)) as { text?: string }).text)
+  const intro = String(((await $.command.run({ command: 'pet', args: 'blackjack' } as never)) as { text?: string }).text)
   expect(intro).toContain('Las Vegas rules')
   const seal = /seal ([a-f0-9]{12})/.exec(intro)?.[1] ?? ''
   expect(seal.length).toBe(12)
