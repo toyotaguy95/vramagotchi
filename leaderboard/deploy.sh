@@ -3,6 +3,10 @@
 #
 #     ALERT_EMAIL=you@example.com leaderboard/deploy.sh
 #
+# To give the page a domain bought in Route 53, run it once with DOMAIN set. Later runs keep that domain.
+#
+#     DOMAIN=example.com leaderboard/deploy.sh
+#
 # It creates real resources in your AWS account. See README.md for what they are and what they cost.
 set -euo pipefail
 cd "$(dirname "$0")"
@@ -12,10 +16,22 @@ REGION=${AWS_REGION:-us-east-1}
 ACCOUNT=$(aws sts get-caller-identity --query Account --output text)
 UPLOADS=vramagotchi-uploads-$ACCOUNT-$REGION        # where the function's code is kept for CloudFormation
 
+# Keep the domain the stack already has unless DOMAIN says otherwise.
+DOMAIN=${DOMAIN:-$(aws cloudformation describe-stacks --region "$REGION" --stack-name "$STACK" \
+    --query "Stacks[0].Parameters[?ParameterKey=='Domain'].ParameterValue | [0]" --output text 2>/dev/null || true)}
+[ "$DOMAIN" != None ] || DOMAIN=
+ZONE=
+if [ -n "$DOMAIN" ]; then
+    ZONE=$(aws route53 list-hosted-zones-by-name --dns-name "$DOMAIN." --query "HostedZones[?Name=='$DOMAIN.'].Id | [0]" --output text)
+    [ "$ZONE" != None ] || { echo "No Route 53 hosted zone for $DOMAIN" >&2; exit 1; }
+    ZONE=${ZONE#/hostedzone/}
+fi
+
 aws s3api head-bucket --bucket "$UPLOADS" 2>/dev/null || aws s3 mb "s3://$UPLOADS" --region "$REGION"
 aws cloudformation package --region "$REGION" --template-file template.yaml --s3-bucket "$UPLOADS" --output-template-file .packaged.yaml
 aws cloudformation deploy --region "$REGION" --stack-name "$STACK" --template-file .packaged.yaml \
-    --capabilities CAPABILITY_IAM CAPABILITY_AUTO_EXPAND --no-fail-on-empty-changeset --parameter-overrides AlertEmail="${ALERT_EMAIL:-}"
+    --capabilities CAPABILITY_IAM CAPABILITY_AUTO_EXPAND --no-fail-on-empty-changeset --parameter-overrides AlertEmail="${ALERT_EMAIL:-}" \
+    Domain="$DOMAIN" HostedZoneId="$ZONE"
 
 output() { aws cloudformation describe-stacks --region "$REGION" --stack-name "$STACK" --query "Stacks[0].Outputs[?OutputKey=='$1'].OutputValue" --output text; }
 API=$(output ApiUrl); PAGE=$(output PageUrl); BUCKET=$(output PageBucketName)

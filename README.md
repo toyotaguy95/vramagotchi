@@ -135,7 +135,7 @@ they never change what your pet has eaten, its growth, or its place on the board
 
 ### A public leaderboard
 
-**[The board](https://diqgvf4dpjwp.cloudfront.net)** shows the best-fed pets, with a crown for first place. Your
+**[The board](https://vramagotchi.com)** shows the best-fed pets, with a crown for first place. Your
 pet only appears there if you type `/pet board join`, and `/pet board leave` takes it off again.
 
 Once a pet is on the board, the board rolls its luck: whether it is shiny and what it finds while it eats.

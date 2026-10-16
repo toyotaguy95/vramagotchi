@@ -28,7 +28,7 @@ const SHINY_ODDS = 1 / 50
 
 // The public leaderboard. A pet is only ever sent there after its owner types /pet board join.
 const BOARD_API = 'https://ekvt9e2eoj.execute-api.us-east-1.amazonaws.com'      // where pets report
-const BOARD_PAGE = 'https://diqgvf4dpjwp.cloudfront.net'      // the page people look at
+const BOARD_PAGE = 'https://vramagotchi.com'      // the page people look at
 const REPORT_EVERY_MS = 10 * 60_000
 const BOARD_NAME = /^[A-Za-z0-9][A-Za-z0-9 ]{0,11}$/
 const TEAM_CODE = /^[a-z0-9]{1,12}-[a-z0-9]{8}$/      // a team is a code its members share: its name, a dash, eight random characters

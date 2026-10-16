@@ -17,9 +17,18 @@ Parameters:
     Type: Number
     Default: 20
     Description: How many new pets one network (a home, an office) may hatch on the board in a day.
+  Domain:
+    Type: String
+    Default: ''
+    Description: The page's own address, such as vramagotchi.com, bought in Route 53. Leave empty to use only the CloudFront address.
+  HostedZoneId:
+    Type: String
+    Default: ''
+    Description: The Route 53 hosted zone that holds the domain's records. deploy.sh looks it up from the domain.
 
 Conditions:
   HasAlertEmail: !Not [!Equals [!Ref AlertEmail, '']]
+  HasDomain: !Not [!Equals [!Ref Domain, '']]
 
 Resources:
   # One row per pet. The "board" index keeps every public pet sorted by its place, so the top 100 is one cheap read.
@@ -104,6 +113,12 @@ Resources:
         DefaultRootObject: index.html
         PriceClass: PriceClass_100
         HttpVersion: http2
+        IPV6Enabled: true
+        Aliases: !If [HasDomain, [!Ref Domain, !Sub 'www.${Domain}'], !Ref AWS::NoValue]
+        ViewerCertificate: !If
+          - HasDomain
+          - { AcmCertificateArn: !Ref Certificate, SslSupportMethod: sni-only, MinimumProtocolVersion: TLSv1.2_2021 }
+          - !Ref AWS::NoValue
         Origins:
           - Id: page
             DomainName: !GetAtt PageBucket.RegionalDomainName
@@ -130,6 +145,32 @@ Resources:
               StringEquals:
                 AWS:SourceArn: !Sub 'arn:aws:cloudfront::${AWS::AccountId}:distribution/${Page}'
 
+  # The lock icon for the domain. AWS proves the domain is ours by adding a record to the hosted zone, then issues it.
+  # CloudFront only takes certificates from us-east-1, so this stack must live there to use a domain.
+  Certificate:
+    Type: AWS::CertificateManager::Certificate
+    Condition: HasDomain
+    Properties:
+      DomainName: !Ref Domain
+      SubjectAlternativeNames: [!Sub 'www.${Domain}']
+      ValidationMethod: DNS
+      DomainValidationOptions:
+        - { DomainName: !Ref Domain, HostedZoneId: !Ref HostedZoneId }
+        - { DomainName: !Sub 'www.${Domain}', HostedZoneId: !Ref HostedZoneId }
+
+  # Points the domain and www at CloudFront. A is for IPv4 visitors, AAAA for IPv6.
+  # Z2FDTNDATAQYW2 is the fixed zone AWS uses for every CloudFront address.
+  DomainRecords:
+    Type: AWS::Route53::RecordSetGroup
+    Condition: HasDomain
+    Properties:
+      HostedZoneId: !Ref HostedZoneId
+      RecordSets:
+        - { Name: !Ref Domain, Type: A, AliasTarget: { HostedZoneId: Z2FDTNDATAQYW2, DNSName: !GetAtt Page.DomainName } }
+        - { Name: !Ref Domain, Type: AAAA, AliasTarget: { HostedZoneId: Z2FDTNDATAQYW2, DNSName: !GetAtt Page.DomainName } }
+        - { Name: !Sub 'www.${Domain}', Type: A, AliasTarget: { HostedZoneId: Z2FDTNDATAQYW2, DNSName: !GetAtt Page.DomainName } }
+        - { Name: !Sub 'www.${Domain}', Type: AAAA, AliasTarget: { HostedZoneId: Z2FDTNDATAQYW2, DNSName: !GetAtt Page.DomainName } }
+
   # An email when the whole account's bill for the month passes 5 dollars, and again at 10.
   Spending:
     Type: AWS::Budgets::Budget
@@ -150,6 +191,6 @@ Outputs:
   ApiUrl:
     Value: !Sub 'https://${Api}.execute-api.${AWS::Region}.amazonaws.com'
   PageUrl:
-    Value: !Sub 'https://${Page.DomainName}'
+    Value: !If [HasDomain, !Sub 'https://${Domain}', !Sub 'https://${Page.DomainName}']
   PageBucketName:
     Value: !Ref PageBucket
